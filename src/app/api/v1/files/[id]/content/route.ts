@@ -6,13 +6,17 @@ import { asSystem } from '@/server/db/client';
 import { files } from '@/server/db/schema';
 import { readObject, verifySignature } from '@/server/services/files';
 
-// للتخزين المحلي: الرابط الموقّع نفسه هو الإذن، صالح 5 دقائق
+// للتخزين المحلي وتخزين القاعدة: الرابط الموقّع نفسه هو الإذن، صالح 5 دقائق
 export const GET = route<{ id: string }>({ auth: 'public' }, async (ctx) => {
   const { exp, sig } = ctx.query(S.fileContent);
   if (!verifySignature(ctx.params.id, exp, sig)) throw new ApiError(403, 'link_expired', 'انتهت صلاحية الرابط');
-  const [file] = await asSystem(null, (tx) => tx.select().from(files).where(eq(files.id, ctx.params.id)));
-  if (!file || file.deletedAt) throw notFound('الملف');
-  const bytes = await readObject(file);
+  const found = await asSystem(null, async (tx) => {
+    const [file] = await tx.select().from(files).where(eq(files.id, ctx.params.id));
+    if (!file || file.deletedAt) return null;
+    return { file, bytes: await readObject(tx, file) };
+  });
+  if (!found) throw notFound('الملف');
+  const { file, bytes } = found;
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': file.mime,

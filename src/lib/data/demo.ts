@@ -26,6 +26,7 @@ const raw: RawData = {
   applications: demo.applications,
   audit: demo.adminAudit,
   weeklySessions: demo.adminWeekly,
+  certificates: demo.certificates,
 };
 
 /** ساعة العرض ثابتة لتبقى الحالات متّسقة (حصة مفتوحة الآن، تقرير متأخر…) */

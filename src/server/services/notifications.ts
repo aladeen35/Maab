@@ -5,6 +5,8 @@ import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { notifications, notificationTemplates, users } from '../db/schema';
 import { deliverMessage } from '../auth/channels';
+import { channelReady } from '../auth/methods';
+import { hasDevices, linkFor, sendPush } from './push';
 import { flagEnabled } from './settings';
 
 export type NotificationEvent =
@@ -17,7 +19,8 @@ export type NotificationEvent =
   | 'balance_low'
   | 'juz_completed'
   | 'session_changed'
-  | 'application_update';
+  | 'application_update'
+  | 'certificate_issued';
 
 /** نصوص احتياطية إن لم يوجد قالب في القاعدة لهذا الحدث */
 const FALLBACK: Record<NotificationEvent, { title: string; body: string }> = {
@@ -31,6 +34,7 @@ const FALLBACK: Record<NotificationEvent, { title: string; body: string }> = {
   juz_completed: { title: 'مبروك الشرافة', body: 'أتمّ {{student}} {{juz}}، ربنا يجعله في ميزان حسناتكم.' },
   session_changed: { title: 'تغيّر موعد حصة', body: 'حصة {{student}} أصبحت {{time}}.' },
   application_update: { title: 'تحديث طلب الانضمام', body: '{{message}}' },
+  certificate_issued: { title: 'شهادة جديدة', body: 'صدرت شهادة {{title}} لـ{{student}}، مبروك!' },
 };
 
 /** الأحداث التي تستحق رسالة خارج التطبيق افتراضياً */
@@ -42,6 +46,7 @@ const EXTERNAL_BY_DEFAULT: NotificationEvent[] = [
   'juz_completed',
   'session_changed',
   'application_update',
+  'certificate_issued',
 ];
 
 export const render = (tpl: string, vars: Record<string, string | number>) =>
@@ -71,17 +76,22 @@ export async function notify(tx: Tx, n: Notify): Promise<void> {
     .where(and(inArray(users.id, ids), isNull(users.deletedAt)));
 
   const now = new Date();
+  const devices = await hasDevices(tx, recipients.map((r) => r.id));
   const rows: (typeof notifications.$inferInsert)[] = [];
   for (const r of recipients) {
     const inApp = tplFor('in_app');
     rows.push({ userId: r.id, event: n.event, channel: 'in_app', title: render(inApp.title, vars), body: render(inApp.body, vars), data: n.data, status: 'sent', sentAt: now });
     const prefs = r.prefs?.[n.event] ?? {};
+    // إشعار الجهاز مجاني ويصل لكل الأحداث، ما لم يُطفئه المستخدم
+    if (devices.has(r.id) && prefs.push !== false) {
+      rows.push({ userId: r.id, event: n.event, channel: 'push', title: render(inApp.title, vars), body: render(inApp.body, vars), data: n.data });
+    }
     const wants = (ch: 'whatsapp' | 'email' | 'sms') => prefs[ch] ?? EXTERNAL_BY_DEFAULT.includes(n.event);
     const external: ('whatsapp' | 'email' | 'sms')[] = [];
-    if (r.phone && whatsappOn && wants('whatsapp')) external.push('whatsapp');
-    if (r.email && wants('email')) external.push('email');
+    if (r.phone && whatsappOn && channelReady('whatsapp') && wants('whatsapp')) external.push('whatsapp');
+    if (r.email && channelReady('email') && wants('email')) external.push('email');
     // الرسالة النصية بتفعيل صريح فقط (تكلفتها أعلى)، وللأرقام السعودية
-    if (r.phone?.startsWith('+966') && prefs.sms === true) external.push('sms');
+    if (r.phone?.startsWith('+966') && channelReady('sms') && prefs.sms === true) external.push('sms');
     for (const channel of external) {
       const tpl = tplFor(channel);
       rows.push({ userId: r.id, event: n.event, channel, title: render(tpl.title, vars), body: render(tpl.body, vars), data: n.data });
@@ -105,6 +115,18 @@ export async function dispatchQueued(tx: Tx, limit = 50): Promise<{ sent: number
   for (const { n, phone, email } of queued) {
     const to = n.channel === 'email' ? email : phone;
     try {
+      if (n.channel === 'push') {
+        const delivered = await sendPush(tx, n.userId, { title: n.title, body: n.body, url: linkFor(n.event, n.data), tag: n.event });
+        // لا جهاز مشترك الآن: لا فائدة من إعادة المحاولة
+        if (!delivered) {
+          await tx.update(notifications).set({ status: 'failed', error: 'لا جهاز مفعّل' }).where(eq(notifications.id, n.id));
+          failed++;
+          continue;
+        }
+        await tx.update(notifications).set({ status: 'sent', sentAt: new Date(), error: null }).where(eq(notifications.id, n.id));
+        sent++;
+        continue;
+      }
       if (!to) throw new Error('لا توجد وسيلة تواصل لهذه القناة');
       await deliverMessage(n.channel as 'whatsapp' | 'sms' | 'email', to, n.title, n.body);
       await tx.update(notifications).set({ status: 'sent', sentAt: new Date(), error: null }).where(eq(notifications.id, n.id));

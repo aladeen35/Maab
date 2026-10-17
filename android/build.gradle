@@ -1,0 +1,4 @@
+// تطبيق أندرويد لمآب: Trusted Web Activity يفتح الموقع الحي بملء الشاشة (قالب Bubblewrap)
+plugins {
+    id 'com.android.application' version '8.9.1' apply false
+}

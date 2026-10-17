@@ -271,3 +271,23 @@ dialog::backdrop {
     transform: translateY(6px);
   }
 }
+
+/* طباعة الشهادة على ورقة A4 أفقية كاملة، دون هوامش المتصفح */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+  html,
+  body {
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .certificate-sheet {
+    width: 297mm !important;
+    height: 210mm !important;
+    max-width: none;
+    break-inside: avoid;
+  }
+}

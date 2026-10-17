@@ -21,7 +21,13 @@ export function databaseUrl(): string {
 export function getDb(): DB {
   if (!globalForDb.maabDb) {
     // prepare:false يناسب مجمّع اتصالات Supabase في وضع المعاملات
-    globalForDb.maabSql = postgres(databaseUrl(), { max: Number(process.env.DB_POOL_MAX ?? 10), prepare: false });
+    // على Vercel كل نسخة دالة تفتح اتصالات قليلة وتغلق الخاملة سريعاً
+    const serverless = Boolean(process.env.VERCEL);
+    globalForDb.maabSql = postgres(databaseUrl(), {
+      max: Number(process.env.DB_POOL_MAX ?? (serverless ? 3 : 10)),
+      prepare: false,
+      ...(serverless ? { idle_timeout: 20 } : {}),
+    });
     globalForDb.maabDb = drizzle(globalForDb.maabSql, { schema, casing: 'snake_case' });
   }
   return globalForDb.maabDb;

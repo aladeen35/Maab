@@ -11,7 +11,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'تحفيظ القرآن الكريم عن بُعد للأطفال والنساء بمعلمات فقط.',
     lang: 'ar',
     dir: 'rtl',
-    start_url: asset('/'),
+    // التطبيق المثبّت يفتح على شاشة المستخدم مباشرة
+    start_url: asset('/start'),
+    id: asset('/'),
     scope: asset('/'),
     display: 'standalone',
     orientation: 'portrait',

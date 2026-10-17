@@ -67,6 +67,7 @@ const TEMPLATES: { event: string; title: string; body: string }[] = [
   { event: 'payment_rejected', title: 'التحويل يحتاج مراجعة', body: 'الطلب {{ref}}: {{reason}}' },
   { event: 'balance_low', title: 'رصيد الباقة منخفض', body: 'بقي في باقة {{student}} {{remaining}}.' },
   { event: 'juz_completed', title: 'مبروك الشرافة', body: 'أتمّ {{student}} {{juz}}، ربنا يجعله في ميزان حسناتكم.' },
+  { event: 'certificate_issued', title: 'شهادة جديدة', body: 'صدرت شهادة {{title}} لـ{{student}}، مبروك!' },
 ];
 
 async function seedReference(tx: Tx) {

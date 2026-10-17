@@ -1,10 +1,12 @@
 // الحساب: بيانات المستخدم الحالي وتفضيلاته، والدخول بحساب Google لمن هم
 // خارج السعودية (رمز Google ID يُتحقق منه بمفاتيح Google العامة).
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
+import { isStaff } from '@/lib/domain/permissions';
 import { asSystem } from '../db/client';
-import { guardians, teachers, users } from '../db/schema';
-import { ApiError, badRequest } from '../api/http';
+import { certificates, guardians, guardianStudents, meetings, pushSubscriptions, sessions, students, teachers, userRoles, users } from '../db/schema';
+import { ApiError, badRequest, conflict } from '../api/http';
+import { audit } from './audit';
 import type { Viewer } from '../api/route';
 import { env } from '../env';
 import { isValidTimezone } from '@/lib/tz';
@@ -64,3 +66,53 @@ export async function verifyGoogleCredential(credential: string): Promise<{ sub:
     throw new ApiError(401, 'google_invalid', 'تعذّر التحقق من حساب Google');
   }
 }
+
+/**
+ * حذف الحساب (شرط Google Play): يُمحى ما يعرّف بالمستخدم وأبنائه — الاسم
+ * والجوال والبريد ورموز الدخول وأجهزة الإشعارات والشهادات — وتُلغى حصصهم
+ * القادمة. يبقى من السجلات المالية والتقارير ما يلزم نظاماً بلا ما يدل على
+ * صاحبه. المعلمات وموظفو الإدارة يُنهي ارتباطهم المدير العام.
+ */
+export async function deleteAccount(viewer: Viewer, ip?: string | null) {
+  if (viewer.roles.includes('teacher') || isStaff(viewer.roles)) {
+    throw conflict('ask_admin', 'حساب المعلمة أو الإدارة يُغلق عبر المدير العام حتى تُنقل الحصص والطلاب أولاً');
+  }
+  return asSystem(viewer.userId, async (tx) => {
+    const now = new Date();
+    const [g] = await tx.select({ id: guardians.id }).from(guardians).where(and(eq(guardians.userId, viewer.userId), isNull(guardians.deletedAt)));
+    const kids = g
+      ? (await tx.select({ id: guardianStudents.studentId }).from(guardianStudents).where(eq(guardianStudents.guardianId, g.id))).map((r) => r.id)
+      : (await tx.select({ id: students.id }).from(students).where(eq(students.userId, viewer.userId))).map((r) => r.id);
+    // أبناء مشتركون مع ولي أمر آخر يبقون له
+    const shared = kids.length
+      ? (await tx.select({ id: guardianStudents.studentId }).from(guardianStudents).where(and(inArray(guardianStudents.studentId, kids), g ? ne(guardianStudents.guardianId, g.id) : undefined))).map((r) => r.id)
+      : [];
+    const mine = kids.filter((k) => !shared.includes(k));
+
+    if (mine.length) {
+      const upcoming = await tx
+        .update(sessions)
+        .set({ status: 'cancelled' })
+        .where(and(inArray(sessions.studentId, mine), inArray(sessions.status, ['scheduled', 'held']), gt(sessions.startsAt, now)))
+        .returning({ id: sessions.id });
+      if (upcoming.length) await tx.update(meetings).set({ status: 'pending', attempts: 0 }).where(inArray(meetings.sessionId, upcoming.map((x) => x.id)));
+      await tx.delete(certificates).where(inArray(certificates.studentId, mine));
+      const kidUsers = (await tx.select({ userId: students.userId }).from(students).where(inArray(students.id, mine))).map((r) => r.userId).filter((x): x is string => Boolean(x));
+      await tx
+        .update(students)
+        .set({ fullName: 'حساب محذوف', displayName: 'محذوف', goal: null, level: null, loginCodeHash: null, userId: null, deletedAt: now })
+        .where(inArray(students.id, mine));
+      if (kidUsers.length) await tx.update(users).set({ fullName: '', deletedAt: now }).where(inArray(users.id, kidUsers));
+    }
+    if (g) await tx.update(guardians).set({ deletedAt: now }).where(eq(guardians.id, g.id));
+    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, viewer.userId));
+    await tx.delete(userRoles).where(eq(userRoles.userId, viewer.userId));
+    await tx
+      .update(users)
+      .set({ phone: null, email: null, googleSub: null, fullName: '', city: null, notificationPrefs: {}, deletedAt: now })
+      .where(eq(users.id, viewer.userId));
+    await audit(tx, viewer, { action: 'account.delete', entity: 'users', entityId: viewer.userId, after: { students: mine.length } }, ip);
+    return { deleted: true, students: mine.length };
+  });
+}
+

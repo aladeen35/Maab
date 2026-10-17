@@ -10,6 +10,7 @@ import { api, ApiFailure, errorText, IS_LIVE } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { OTP_CHANNEL_LABEL, otpChannels, type CountryCode, type OtpChannel } from '@/lib/domain/market';
 import { displayPhone, parsePhone } from '@/lib/phone';
+import type { LoginMethods } from '@/server/auth/methods';
 import { GoogleButton } from './GoogleButton';
 
 const LENGTH = 6;
@@ -24,8 +25,8 @@ const CHANNEL_ICON: Record<OtpChannel, typeof MessageCircle> = { whatsapp: Messa
  * الدخول برمز لمرة واحدة: واتساب أولاً لكل الأرقام، والرسالة النصية احتياطاً
  * للأرقام السعودية، والبريد أو Google لغيرها. لا كلمات مرور.
  */
-export function LoginFlow() {
-  const [mode, setMode] = useState<'phone' | 'email'>('phone');
+export function LoginFlow({ methods }: { methods: LoginMethods }) {
+  const [mode, setMode] = useState<'phone' | 'email'>(methods.phone ? 'phone' : 'email');
   const [country, setCountry] = useState<CountryCode>('SD');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -89,9 +90,10 @@ export function LoginFlow() {
     );
   }
 
+  const otp = methods.phone || methods.email;
   return (
     <div className="space-y-5">
-      {mode === 'phone' ? (
+      {!otp ? null : mode === 'phone' ? (
         <form
           className="space-y-5"
           noValidate
@@ -117,12 +119,14 @@ export function LoginFlow() {
             <Smartphone className="size-5" aria-hidden />
             أرسل الرمز على واتساب
           </Button>
-          <p className="text-center text-xs text-muted">
-            ما عندك واتساب؟{' '}
-            <button type="button" className="font-bold text-brand" onClick={() => (setMode('email'), setError(undefined))}>
-              ادخلي بالبريد الإلكتروني
-            </button>
-          </p>
+          {methods.email && (
+            <p className="text-center text-xs text-muted">
+              ما عندك واتساب؟{' '}
+              <button type="button" className="font-bold text-brand" onClick={() => (setMode('email'), setError(undefined))}>
+                ادخلي بالبريد الإلكتروني
+              </button>
+            </p>
+          )}
         </form>
       ) : (
         <form
@@ -146,21 +150,23 @@ export function LoginFlow() {
             value={email}
             error={error}
             onChange={(e) => (setEmail(e.target.value), setError(undefined))}
-            hint="للمقيمين خارج السعودية: نرسل الرمز إلى بريدك."
+            hint={methods.phone ? 'للمقيمين خارج السعودية: نرسل الرمز إلى بريدك.' : 'نرسل رمز الدخول إلى بريدك، صالحًا لخمس دقائق.'}
           />
           <Button type="submit" block disabled={busy}>
             <Mail className="size-5" aria-hidden />
             أرسل الرمز إلى بريدي
           </Button>
-          <p className="text-center text-xs text-muted">
-            <button type="button" className="font-bold text-brand" onClick={() => (setMode('phone'), setError(undefined))}>
-              الرجوع للدخول برقم الجوال
-            </button>
-          </p>
+          {methods.phone && (
+            <p className="text-center text-xs text-muted">
+              <button type="button" className="font-bold text-brand" onClick={() => (setMode('phone'), setError(undefined))}>
+                الرجوع للدخول برقم الجوال
+              </button>
+            </p>
+          )}
         </form>
       )}
-      <Divider />
-      <GoogleButton country={country} />
+      {otp && methods.google && <Divider />}
+      {methods.google && <GoogleButton country={country} />}
     </div>
   );
 }

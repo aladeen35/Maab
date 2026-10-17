@@ -10,8 +10,9 @@ import { otpChannels, type CountryCode, type OtpChannel } from '@/lib/domain/mar
 import { asSystem, type Tx } from '../db/client';
 import { loginAttempts, otpChallenges } from '../db/schema';
 import { ApiError, badRequest, tooMany } from '../api/http';
-import { env } from '../env';
+import { authSecret } from '../env';
 import { ChannelError, deliverOtp } from './channels';
+import { channelReady } from './methods';
 
 export const OTP_TTL_MIN = 5;
 export const OTP_MAX_ATTEMPTS = 5;
@@ -24,11 +25,12 @@ export type Identifier = { kind: 'phone'; value: string; country: CountryCode } 
 
 type Meta = { ip?: string | null; userAgent?: string | null };
 
-const hash = (identifier: string, code: string) => createHmac('sha256', env().AUTH_SECRET).update(`${identifier}:${code}`).digest('hex');
+const hash = (identifier: string, code: string) => createHmac('sha256', authSecret()).update(`${identifier}:${code}`).digest('hex');
 const secondsUntil = (d: Date, now: Date) => Math.max(1, Math.ceil((d.getTime() - now.getTime()) / 1000));
 
+/** القنوات المفعّلة لهذا المعرّف بترتيب الأولوية */
 export function channelsFor(id: Identifier): OtpChannel[] {
-  return id.kind === 'email' ? ['email'] : otpChannels(id.country);
+  return (id.kind === 'email' ? (['email'] as OtpChannel[]) : otpChannels(id.country)).filter(channelReady);
 }
 
 /** يُسلسل الطلبات المتزامنة للمعرّف نفسه فلا يتجاوز أحدٌ الحدّ بطلبات متوازية */
@@ -41,6 +43,9 @@ export type SendResult = { channel: OtpChannel; fallbacks: OtpChannel[]; resendI
 
 export async function sendOtp(id: Identifier, requested: OtpChannel | undefined, meta: Meta = {}): Promise<SendResult> {
   const allowed = channelsFor(id);
+  if (!allowed.some((c) => (id.kind === 'phone' ? c !== 'email' : c === 'email'))) {
+    throw new ApiError(503, 'channel_unavailable', id.kind === 'phone' ? 'الدخول برقم الجوال غير متاح حالياً، ادخلي بالبريد أو بحساب Google' : 'الدخول بالبريد غير متاح حالياً');
+  }
   const channel = requested ?? allowed[0];
   if (!allowed.includes(channel)) throw badRequest('channel_not_allowed', 'هذه القناة غير متاحة لهذا الرقم', { allowed });
   // البريد بديل للرقم بإدخال البريد نفسه معرّفاً، لا بإرسال رمز الرقم إليه

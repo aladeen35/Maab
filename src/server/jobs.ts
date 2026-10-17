@@ -3,7 +3,7 @@
 // (روابط معلّقة، إشعارات في الطابور) فلا يضيع شيء إن توقف العامل.
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import { asSystem } from './db/client';
-import { guardians, guardianStudents, idempotencyKeys, notifications, otpChallenges, sessions, students, teachers, users } from './db/schema';
+import { guardians, guardianStudents, idempotencyKeys, jobRuns, notifications, otpChallenges, sessions, students, teachers, users } from './db/schema';
 import { expireOrders, expireSubscriptions } from './services/billing';
 import { processPendingMeetings } from './services/meetings';
 import { dispatchQueued, notify } from './services/notifications';
@@ -88,7 +88,8 @@ export function cleanup(now = new Date()) {
   return asSystem(null, async (tx) => {
     const keys = await tx.delete(idempotencyKeys).where(lt(idempotencyKeys.createdAt, new Date(now.getTime() - 24 * HOUR))).returning({ k: idempotencyKeys.key });
     const otps = await tx.delete(otpChallenges).where(lt(otpChallenges.createdAt, new Date(now.getTime() - 24 * HOUR))).returning({ id: otpChallenges.id });
-    return { idempotencyKeys: keys.length, otpChallenges: otps.length };
+    const runs = await tx.delete(jobRuns).where(lt(jobRuns.startedAt, new Date(now.getTime() - 7 * 24 * HOUR))).returning({ name: jobRuns.name });
+    return { idempotencyKeys: keys.length, otpChallenges: otps.length, jobRuns: runs.length };
   });
 }
 

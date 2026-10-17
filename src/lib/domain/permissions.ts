@@ -39,6 +39,7 @@ export const PERMISSIONS = {
   'roles.manage': 'إدارة الأدوار',
   'settings.manage': 'الإعدادات والتفعيل التدريجي',
   'audit.read': 'سجل التدقيق',
+  'certificates.issue': 'إصدار شهادات الإتمام وإلغاؤها',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -55,6 +56,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sessions.reschedule.any',
     'reports.edit',
     'content.manage',
+    'certificates.issue',
   ],
   finance: ['students.read.names', 'plans.purchase.on_behalf', 'payments.approve', 'payments.refund', 'prices.manage', 'revenue.read'],
   support: ['students.read.all', 'sessions.reschedule.any', 'support.impersonate'],

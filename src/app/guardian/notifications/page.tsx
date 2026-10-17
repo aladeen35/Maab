@@ -1,10 +1,11 @@
-import { BellRing, CalendarSync, ClipboardCheck, Receipt, Sparkles, TriangleAlert, UserRound } from 'lucide-react';
+import { Award, BellRing, CalendarSync, ClipboardCheck, Receipt, Sparkles, TriangleAlert, UserRound } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { RescheduleRequest } from '@/components/features/RescheduleRequest';
 import { Page } from '@/components/shell/AppShell';
 import { WaveHeader } from '@/components/shell/WaveHeader';
 import { cn } from '@/lib/cn';
+import { EnablePush } from '@/components/features/EnablePush';
 import { MarkAllRead } from '@/components/features/MarkAllRead';
 import { dataset } from '@/lib/data';
 import { fmtRelativeDay, fmtTime } from '@/lib/format';
@@ -21,6 +22,7 @@ const KIND: Record<NotificationKind, { icon: typeof BellRing; bar: string; tint:
   teacher: { icon: UserRound, bar: 'bg-brand', tint: 'bg-brand/10 text-brand' },
   // الشرافة على لوح الخلوة نفسه
   sharafa: { icon: Sparkles, bar: 'bg-gold', tint: 'lawh' },
+  certificate: { icon: Award, bar: 'bg-gold', tint: 'bg-gold/16 text-gold-text' },
 };
 
 export default async function Notifications() {
@@ -31,6 +33,9 @@ export default async function Notifications() {
     <>
       <WaveHeader title="الإشعارات" back="/guardian" />
       <Page className="-mt-4 space-y-0">
+        <div className="mb-3 empty:hidden">
+          <EnablePush />
+        </div>
         <div className="mb-3 flex items-center justify-between text-sm">
           <span className="font-bold text-ink">الأحدث</span>
           <MarkAllRead disabled={!d.unreadCount()} />

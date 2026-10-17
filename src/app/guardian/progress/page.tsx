@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChildPanels, ChildTabs } from '@/components/features/ChildTabs';
+import { CertificateList } from '@/components/certificate/CertificateList';
 import { ProgressTabs } from '@/components/features/ProgressTabs';
 import { Page } from '@/components/shell/AppShell';
 import { WaveHeader } from '@/components/shell/WaveHeader';
@@ -92,6 +93,8 @@ function ChildProgress({ d, child }: { d: Dataset; child: Student }) {
           </Card>
         ))}
       </dl>
+
+      <CertificateList items={d.certificatesOf(child.id)} empty={`تصدر شهادة تلقائياً عند إتمام كل جزء، وتظهر هنا لتحفظيها PDF أو تشاركيها.`} />
 
       <section className="space-y-3">
         <SectionTitle>سجل التقارير</SectionTitle>

@@ -22,6 +22,7 @@ import { SESSION_COOKIE } from './auth/session';
 import { homeFor } from './auth/users';
 import { asSystem, asUser, type Tx } from './db/client';
 import * as t from './db/schema';
+import { listCertificates } from './services/certificates';
 import { ageOn } from './services/students';
 
 const DAY = 86_400_000;
@@ -54,6 +55,7 @@ function emptyRaw(guardian: GuardianProfile): RawData {
     applications: [],
     audit: [],
     weeklySessions: [],
+    certificates: [],
   };
 }
 
@@ -122,6 +124,7 @@ const KIND: Record<string, NotificationKind> = {
   balance_low: 'balance',
   session_changed: 'reschedule',
   application_update: 'teacher',
+  certificate_issued: 'certificate',
 };
 
 type StudentRow = typeof t.students.$inferSelect;
@@ -304,7 +307,9 @@ async function loadNotifications(tx: Tx, userId: string, base: '/guardian' | '/t
     .limit(50);
   return rows.map((n) => {
     const d = (n.data ?? {}) as Record<string, string | undefined>;
-    const href = d.ref
+    const href = d.code
+      ? `/c/${d.code}`
+      : d.ref
       ? `${base}/payments/${d.ref}`
       : d.reportId && base === '/guardian'
         ? `/guardian/reports/${d.reportId}`
@@ -315,7 +320,7 @@ async function loadNotifications(tx: Tx, userId: string, base: '/guardian' | '/t
             : d.studentId && n.event === 'juz_completed'
               ? `/guardian/progress/map?child=${d.studentId}`
               : undefined;
-    const meta = n.event === 'juz_completed' ? { meta: { studentId: d.studentId, juz: Number(d.juz) } } : {};
+    const meta = n.event === 'juz_completed' ? { meta: { studentId: d.studentId, juz: Number(d.juz) } } : n.event === 'certificate_issued' ? { meta: { studentId: d.studentId, code: d.code } } : {};
     return { id: n.id, kind: KIND[n.event] ?? 'reminder', title: n.title, body: n.body, at: n.createdAt.toISOString(), read: Boolean(n.readAt), ...(href ? { href } : {}), ...meta };
   });
 }
@@ -400,6 +405,7 @@ async function guardianRaw(viewer: Viewer): Promise<RawData> {
     }));
     raw.monthlyAyahs = await loadMonthly(tx, ids);
     if (g) raw.payments = await loadPayments(tx, g.id);
+    raw.certificates = await listCertificates(viewer, ids, tx);
     return raw;
   });
 }
@@ -586,6 +592,7 @@ async function adminRaw(viewer: Viewer): Promise<RawData> {
     raw.notifications = await loadNotifications(tx, viewer.userId, '/admin');
     if (can(viewer.roles, 'audit.read')) raw.audit = await auditTrail(tx);
     raw.weeklySessions = await weeklySessions(tx, now);
+    if (can(viewer.roles, 'certificates.issue')) raw.certificates = await listCertificates(viewer, undefined, tx);
     return raw;
   });
 }
@@ -614,6 +621,14 @@ const ACTIONS: Record<string, string> = {
   'application.rejected': 'اعتذرت عن طلب معلمة',
   'availability.set': 'حدّثت أوقات الإتاحة',
   'account.onboard': 'أكمل مستخدم جديد حسابه',
+  'account.delete': 'حذف مستخدم حسابه',
+  'certificate.issue': 'أصدرت شهادة إتمام دورة',
+  'certificate.revoke': 'ألغت شهادة',
+  'role.bootstrap': 'مُنح المدير العام الأول دوره',
+  'integration.google.connect': 'ربطت حساب Google للحصص',
+  'integration.google.disconnect': 'فصلت حساب Google',
+  'payment_account.update': 'عدّلت حساب استلام',
+  'payment_account.create': 'أضافت حساب استلام',
   export: 'صدّرت تقريراً',
 };
 
@@ -707,4 +722,22 @@ async function applications(tx: Tx): Promise<TeacherApplication[]> {
     ...(a.missingInfo ? { missing: a.missingInfo } : {}),
     ...(a.interviewAt ? { interviewAt: a.interviewAt.toISOString() } : {}),
   }));
+}
+
+export type AdminShell = { name: string; role: string; badges: { payments: number; applications: number } };
+
+/** اسم المستخدم ودوره وأعداد الطوابير لشريط الإدارة */
+export async function adminShell(): Promise<AdminShell> {
+  const viewer = await requireViewer('admin');
+  const role = viewer.roles.includes('super_admin') ? 'super_admin' : (viewer.roles.find((r) => isStaff([r])) ?? viewer.roles[0]);
+  const n = sql<number>`count(*)::int`;
+  const [[pays], [apps]] = await asSystem(viewer.userId, (tx) =>
+    Promise.all([
+      can(viewer.roles, 'payments.approve') ? tx.select({ n }).from(t.payments).where(eq(t.payments.status, 'under_review')) : Promise.resolve([{ n: 0 }]),
+      can(viewer.roles, 'teachers.approve')
+        ? tx.select({ n }).from(t.teacherApplications).where(and(inArray(t.teacherApplications.status, ['new', 'under_review', 'needs_info', 'interview']), isNull(t.teacherApplications.deletedAt)))
+        : Promise.resolve([{ n: 0 }]),
+    ]),
+  );
+  return { name: viewer.user.fullName || viewer.user.email || 'الإدارة', role: ROLES[role], badges: { payments: pays.n, applications: apps.n } };
 }

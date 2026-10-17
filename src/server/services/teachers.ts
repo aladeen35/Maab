@@ -1,6 +1,6 @@
 // المعلمات (القسم 5): طلب الانضمام ومراحله حتى القبول، والقبول يُنشئ حساب
 // المعلمة ودورها، والرفض يحدد موعد إعادة التقديم. الإتاحة الأسبوعية بتوقيتها.
-import { and, asc, avg, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, avg, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { parsePhone } from '@/lib/phone';
 import { defaultTimezone, currencyFor, type CountryCode } from '@/lib/domain/market';
 import { can } from '@/lib/domain/permissions';
@@ -125,10 +125,11 @@ export async function moveApplication(viewer: Viewer, id: string, input: MoveInp
   });
 }
 
-/** القبول: حساب بالجوال إن لم يوجد، ودور المعلمة، وملفها بفئاتها */
+/** القبول: حسابها القائم بالجوال أو البريد، أو حساب جديد، ثم دور المعلمة وملفها بفئاتها */
 async function activateTeacher(tx: Tx, viewer: Viewer, app: typeof teacherApplications.$inferSelect): Promise<string> {
   const country = app.country as CountryCode;
-  let [user] = app.userId ? await tx.select().from(users).where(eq(users.id, app.userId)) : await tx.select().from(users).where(and(eq(users.phone, app.phone), isNull(users.deletedAt)));
+  const sameContact = app.email ? or(eq(users.phone, app.phone), sql`lower(${users.email}) = lower(${app.email})`) : eq(users.phone, app.phone);
+  let [user] = app.userId ? await tx.select().from(users).where(eq(users.id, app.userId)) : await tx.select().from(users).where(and(sameContact, isNull(users.deletedAt)));
   if (!user) {
     [user] = await tx
       .insert(users)

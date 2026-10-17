@@ -34,6 +34,7 @@ export function makeDataset(raw: RawData, clock: () => Date, mode: 'demo' | 'liv
     sessionsOf,
     upcoming,
     past,
+    certificatesOf: (studentId: string) => raw.certificates.filter((c) => c.studentId === studentId),
     reportsOf: (studentId: string) => reports.filter((r) => r.studentId === studentId).sort((a, b) => Date.parse(b.writtenAt) - Date.parse(a.writtenAt)),
     reportSessionDate: (r: Report) => new Date(getSession(r.sessionId)?.startsAt ?? r.writtenAt),
     unreadCount: () => notifications.filter((n) => !n.read).length,

@@ -113,7 +113,7 @@ export type PaymentAccount = {
   instructions: string;
 };
 
-export type NotificationKind = 'reminder' | 'report' | 'payment' | 'balance' | 'reschedule' | 'teacher' | 'sharafa';
+export type NotificationKind = 'reminder' | 'report' | 'payment' | 'balance' | 'reschedule' | 'teacher' | 'sharafa' | 'certificate';
 
 export type AppNotification = {
   id: string;
@@ -125,8 +125,27 @@ export type AppNotification = {
   href?: string;
   /** إشعار يتطلب ردّاً (قبول/رفض) */
   actionable?: boolean;
-  /** للشرافة: الطالب والجزء الذي أتمّه */
-  meta?: { studentId?: string; juz?: number };
+  /** للشرافة: الطالب والجزء الذي أتمّه، وللشهادة رمزها */
+  meta?: { studentId?: string; juz?: number; code?: string };
+};
+
+/** شهادة إتمام: جزء أو ختمة تلقائياً، أو دورة من الإشراف */
+export type Certificate = {
+  id: string;
+  serial: string;
+  /** الرمز العام لصفحة التحقق /c/[code] */
+  code: string;
+  kind: 'juz' | 'khatm' | 'course';
+  juz: number | null;
+  title: string;
+  body: string;
+  studentId: string;
+  studentName: string;
+  teacherName: string | null;
+  mastery: number | null;
+  issuedAt: string;
+  revokedAt: string | null;
+  revokeReason: string | null;
 };
 
 export type TeacherApplication = {

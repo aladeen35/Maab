@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn';
 import { joinState, reportDueAt } from '@/lib/domain/sessions';
 import { dataset } from '@/lib/data';
 import { arCount, fmtFullDate, fmtIn, fmtRelativeDay, fmtTime, fmtTimeRange, SESSIONS } from '@/lib/format';
+import { EnablePush } from '@/components/features/EnablePush';
 
 export const metadata: Metadata = { title: 'لوحة المعلمة' };
 
@@ -56,6 +57,7 @@ export default async function TeacherHome() {
       </WaveHeader>
 
       <Page className="-mt-20">
+        <EnablePush />
         {next && (
           <NextSessionCard
             sessionId={next.id}

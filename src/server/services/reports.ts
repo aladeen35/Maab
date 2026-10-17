@@ -30,6 +30,7 @@ import {
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../api/http';
 import type { Viewer } from '../api/route';
 import { audit } from './audit';
+import { issueAuto } from './certificates';
 import { notify } from './notifications';
 import { getSettings } from './settings';
 
@@ -198,12 +199,16 @@ export async function submitReport(viewer: Viewer, sessionId: string, input: Rep
         data: { reportId: report.id, sessionId: s.id },
       });
     }
+    const completed: number[] = [];
     for (const [juz, before] of juzBefore) {
       const total = juzInfo(juz).ayahs;
       if (before < total && (await juzCoverage(tx, s.studentId, juz)) >= total) {
+        completed.push(juz);
         await notify(tx, { userIds: family, event: 'juz_completed', vars: { student: st.displayName, juz: juzOrdinal(juz) }, data: { studentId: st.id, juz } });
       }
     }
+    // شهادة لكل جزء اكتمل، وللختمة إن اكتمل المصحف
+    const certificatesIssued = await issueAuto(tx, st.id, completed);
     // تنبيه الرصيد المنخفض عند أول خصم فقط، لا عند تعديل تقرير قائم
     if (s.subscriptionId && !s.isMakeup && s.status === 'scheduled' && (status === 'student_absent' || status === 'completed')) {
       const [sub] = await tx.select().from(subscriptions).where(eq(subscriptions.id, s.subscriptionId));
@@ -217,7 +222,7 @@ export async function submitReport(viewer: Viewer, sessionId: string, input: Rep
       }
     }
     await audit(tx, viewer, { action: existing ? 'report.edit' : 'report.create', entity: 'session_reports', entityId: report.id, before: existing ?? null, after: { attendance: report.attendance, grade, mastery: avg } }, ip);
-    return { id: report.id, mastery: avg, grade, late: report.late, counted: newlyCounted.length, sessionStatus: status };
+    return { id: report.id, mastery: avg, grade, late: report.late, counted: newlyCounted.length, sessionStatus: status, certificates: certificatesIssued };
   });
 }
 

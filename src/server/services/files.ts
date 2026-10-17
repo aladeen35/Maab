@@ -4,10 +4,11 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { eq } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { files } from '../db/schema';
+import { fileBlobs, files } from '../db/schema';
 import { ApiError } from '../api/http';
-import { env } from '../env';
+import { authSecret, env } from '../env';
 
 export type FileKind = (typeof files.$inferSelect)['kind'];
 export type FileRow = typeof files.$inferSelect;
@@ -67,17 +68,47 @@ export async function sanitize(kind: FileKind, bytes: Uint8Array): Promise<{ byt
   return { bytes, mime };
 }
 
-// —— التخزين: محلي للتطوير، وSupabase Storage (Buckets خاصة) للإنتاج ——
+// —— التخزين: محلي للتطوير، وSupabase Storage (Buckets خاصة) للإنتاج، وفي
+// القاعدة نفسها على الاستضافة المجانية التي لا قرص دائم فيها ——
 
 /** مجلد التخزين المحلي؛ يُحسب وقت التشغيل فلا يتتبّعه المجمّع كملف من المشروع */
 const storageRoot = () => path.resolve(env().STORAGE_DIR);
 
-async function putObject(bucket: string, key: string, bytes: Uint8Array, mime: string) {
+/** مفاتيح Supabase الجديدة (sb_secret_) تُرسل في apikey وحده، والقديمة (JWT) في الاثنين */
+export function supabaseHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const key = env().SUPABASE_SERVICE_ROLE_KEY ?? '';
+  return { apikey: key, ...(key.startsWith('sb_') ? {} : { Authorization: `Bearer ${key}` }), ...extra };
+}
+
+export const BUCKETS = [...new Set(Object.values(BUCKET))];
+
+/** ينشئ الـBuckets الخاصة إن لم توجد (يُستدعى عند النشر) */
+export async function ensureBuckets(): Promise<string[]> {
   const e = env();
+  if (e.STORAGE_DRIVER !== 'supabase') return [];
+  const created: string[] = [];
+  for (const id of BUCKETS) {
+    const res = await fetch(`${e.SUPABASE_URL}/storage/v1/bucket`, {
+      method: 'POST',
+      headers: supabaseHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ id, name: id, public: false, file_size_limit: LIMITS.audio }),
+    });
+    if (res.ok) created.push(id);
+    else if (res.status !== 409 && !(await res.text()).includes('already exists')) throw new Error(`Supabase Storage bucket ${id}: ${res.status}`);
+  }
+  return created;
+}
+
+async function putObject(tx: Tx, fileId: string, bucket: string, key: string, bytes: Uint8Array, mime: string) {
+  const e = env();
+  if (e.STORAGE_DRIVER === 'db') {
+    await tx.insert(fileBlobs).values({ fileId, bytes });
+    return;
+  }
   if (e.STORAGE_DRIVER === 'supabase') {
     const res = await fetch(`${e.SUPABASE_URL}/storage/v1/object/${bucket}/${key}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${e.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': mime, 'x-upsert': 'false' },
+      headers: supabaseHeaders({ 'Content-Type': mime, 'x-upsert': 'false' }),
       body: Buffer.from(bytes),
     });
     if (!res.ok) throw new Error(`Supabase Storage ${res.status}: ${await res.text()}`);
@@ -88,12 +119,15 @@ async function putObject(bucket: string, key: string, bytes: Uint8Array, mime: s
   await writeFile(path.join(dir, key), bytes, { flag: 'wx' });
 }
 
-export async function readObject(file: Pick<FileRow, 'bucket' | 'path'>): Promise<Uint8Array> {
+export async function readObject(tx: Tx, file: Pick<FileRow, 'id' | 'bucket' | 'path'>): Promise<Uint8Array> {
   const e = env();
+  if (e.STORAGE_DRIVER === 'db') {
+    const [blob] = await tx.select({ bytes: fileBlobs.bytes }).from(fileBlobs).where(eq(fileBlobs.fileId, file.id));
+    if (!blob) throw new Error('محتوى الملف غير موجود');
+    return blob.bytes;
+  }
   if (e.STORAGE_DRIVER === 'supabase') {
-    const res = await fetch(`${e.SUPABASE_URL}/storage/v1/object/${file.bucket}/${file.path}`, {
-      headers: { Authorization: `Bearer ${e.SUPABASE_SERVICE_ROLE_KEY}` },
-    });
+    const res = await fetch(`${e.SUPABASE_URL}/storage/v1/object/${file.bucket}/${file.path}`, { headers: supabaseHeaders() });
     if (!res.ok) throw new Error(`Supabase Storage ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
   }
@@ -104,11 +138,14 @@ export async function readObject(file: Pick<FileRow, 'bucket' | 'path'>): Promis
 export async function storeFile(tx: Tx, input: { ownerId: string | null; kind: FileKind; bytes: Uint8Array }): Promise<FileRow> {
   const clean = await sanitize(input.kind, input.bytes);
   const bucket = BUCKET[input.kind];
-  const key = `${randomUUID()}.${EXT[clean.mime]}`;
-  await putObject(bucket, key, clean.bytes, clean.mime);
+  const fileId = randomUUID();
+  const key = `${fileId}.${EXT[clean.mime]}`;
+  // في تخزين القاعدة يُكتب المحتوى بعد صف الملف (المفتاح الأجنبي)، وفي غيره قبله
+  if (env().STORAGE_DRIVER !== 'db') await putObject(tx, fileId, bucket, key, clean.bytes, clean.mime);
   const [row] = await tx
     .insert(files)
     .values({
+      id: fileId,
       ownerId: input.ownerId,
       kind: input.kind,
       bucket,
@@ -118,6 +155,7 @@ export async function storeFile(tx: Tx, input: { ownerId: string | null; kind: F
       sha256: createHash('sha256').update(clean.bytes).digest('hex'),
     })
     .returning();
+  if (env().STORAGE_DRIVER === 'db') await putObject(tx, fileId, bucket, key, clean.bytes, clean.mime);
   return row;
 }
 
@@ -131,7 +169,7 @@ export async function fileFromForm(form: FormData, field: string): Promise<Uint8
 
 // —— الروابط الموقّعة ——
 
-const signature = (fileId: string, exp: number) => createHmac('sha256', env().AUTH_SECRET).update(`file:${fileId}:${exp}`).digest('base64url');
+const signature = (fileId: string, exp: number) => createHmac('sha256', authSecret()).update(`file:${fileId}:${exp}`).digest('base64url');
 
 /** رابط مؤقت بعد التحقق من حق الوصول (يتحقق المستدعي بقراءة الملف عبر RLS) */
 export async function signedUrl(file: Pick<FileRow, 'id' | 'bucket' | 'path'>, now = Date.now()): Promise<{ url: string; expiresAt: string }> {
@@ -140,7 +178,7 @@ export async function signedUrl(file: Pick<FileRow, 'id' | 'bucket' | 'path'>, n
   if (e.STORAGE_DRIVER === 'supabase') {
     const res = await fetch(`${e.SUPABASE_URL}/storage/v1/object/sign/${file.bucket}/${file.path}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${e.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+      headers: supabaseHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ expiresIn: SIGNED_URL_TTL_SEC }),
     });
     if (!res.ok) throw new Error(`Supabase Storage ${res.status}`);

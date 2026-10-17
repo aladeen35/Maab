@@ -2,7 +2,7 @@
 // (النسخة الثابتة على GitHub Pages)، وقاعدة البيانات لمستخدم مسجّل (live).
 import type { Duration, PlanId } from '../domain/billing';
 import type { CountryCode, Currency, PaymentMethod } from '../domain/market';
-import type { AppNotification, Payment, PaymentAccount, Range, Report, Session, Student, Teacher, TeacherApplication } from '../types';
+import type { AppNotification, Certificate, Payment, PaymentAccount, Range, Report, Session, Student, Teacher, TeacherApplication } from '../types';
 
 export type Section = 'guardian' | 'teacher' | 'admin';
 
@@ -94,4 +94,6 @@ export type RawData = {
   audit: { who: string; what: string; at: string }[];
   /** الحصص المكتملة في الأسابيع الستة الأخيرة */
   weeklySessions: { label: string; value: number }[];
+  /** شهادات الأبناء (لولي الأمر) أو آخر الشهادات الصادرة (للإدارة) */
+  certificates: Certificate[];
 };

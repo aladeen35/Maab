@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { api, errorText, IS_LIVE, newKey } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { MAX_REQUEST_BYTES, mb, shrinkImage } from '@/lib/upload';
 
 // الأنواع المسموحة وحدّ الحجم للإيصالات (القسم 15) — ويُفحص المحتوى في الخادم لا الامتداد فقط
 const ACCEPT = ['application/pdf', 'image/jpeg', 'image/png'];
-const MAX_MB = 5;
+const MAX_MB = 4;
 
 export function ReceiptUpload({ orderRef, today }: { orderRef: string; today: string }) {
   const router = useRouter();
@@ -42,8 +43,13 @@ export function ReceiptUpload({ orderRef, today }: { orderRef: string; today: st
         if (!IS_LIVE) return setSent(true);
         setBusy(true);
         setError(undefined);
+        const upload = await shrinkImage(file);
+        if (upload.size > MAX_REQUEST_BYTES) {
+          setBusy(false);
+          return setFileError(`الملف ${mb(upload.size)}؛ الحد ${MAX_MB} ميجابايت. صوّري الإيصال بالكاميرا بدل ملف PDF كبير`);
+        }
         const form = new FormData();
-        form.set('file', file);
+        form.set('file', upload);
         form.set('senderName', sender.trim());
         form.set('transferDate', date);
         try {
@@ -75,7 +81,8 @@ export function ReceiptUpload({ orderRef, today }: { orderRef: string; today: st
             const f = e.target.files?.[0];
             if (!f) return;
             if (!ACCEPT.includes(f.type)) return setFileError('النوع غير مسموح: PDF أو JPG أو PNG فقط');
-            if (f.size > MAX_MB * 1024 * 1024) return setFileError(`الملف أكبر من ${MAX_MB} ميجابايت`);
+            // الصور الكبيرة تُصغَّر عند الإرسال؛ ملف PDF يُرفض هنا إن تجاوز الحد
+            if (f.type === 'application/pdf' && f.size > MAX_MB * 1024 * 1024) return setFileError(`الملف أكبر من ${MAX_MB} ميجابايت`);
             setFileError(undefined);
             setFile(f);
           }}

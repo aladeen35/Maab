@@ -9,7 +9,7 @@ import { asSystem, asUser, type Tx } from '../db/client';
 import { consents, guardians, guardianStudents, students, subscriptions, teachers, userRoles, users } from '../db/schema';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../api/http';
 import type { Viewer } from '../api/route';
-import { env } from '../env';
+import { authSecret } from '../env';
 import { audit } from './audit';
 import { flagEnabled, getSetting } from './settings';
 
@@ -185,7 +185,7 @@ export async function updateStudent(viewer: Viewer, studentId: string, patch: St
 /** بلا أحرف ملتبسة (0/O، 1/I/L) لتُملى على الطفل بسهولة */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const hashStudentCode = (code: string) =>
-  createHmac('sha256', env().AUTH_SECRET).update(`student:${code.toUpperCase().replace(/[^A-Z0-9]/g, '')}`).digest('hex');
+  createHmac('sha256', authSecret()).update(`student:${code.toUpperCase().replace(/[^A-Z0-9]/g, '')}`).digest('hex');
 
 export async function issueStudentCode(viewer: Viewer, studentId: string, ip?: string | null): Promise<{ code: string }> {
   return asSystem(viewer.userId, async (tx) => {

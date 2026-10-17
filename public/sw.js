@@ -2,7 +2,7 @@
 // - ملفات البناء والخطوط والصور: من الذاكرة أولاً (أسماؤها تتغيّر مع كل إصدار).
 // - صفحات المصحف: من الشبكة أولاً، ومن الذاكرة عند انقطاع الاتصال.
 // بيانات الحساب والجداول لا تُخزَّن هنا حتى لا تظهر بيانات قديمة أو لمستخدم آخر.
-const VERSION = 'maab-v2';
+const VERSION = 'maab-v3';
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-mushaf`;
 
@@ -65,4 +65,41 @@ self.addEventListener('fetch', (event) => {
         .catch(() => caches.match(request, { ignoreVary: true }).then((hit) => hit || Response.error())),
     );
   }
+});
+
+// إشعارات الجهاز (Web Push): العنوان والنص والرابط من الخادم، وفي تطبيق
+// أندرويد تظهر باسم التطبيق وأيقونته
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: 'مآب', body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'مآب', {
+      body: data.body || '',
+      dir: 'rtl',
+      lang: 'ar',
+      icon: `${BASE}/icons/icon-192.png`,
+      badge: `${BASE}/icons/badge-96.png`,
+      tag: data.tag,
+      data: { url: data.url || `${BASE}/` },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || `${BASE}/`, self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const open = wins.find((w) => w.url.startsWith(self.location.origin));
+      if (open) {
+        open.navigate(target).catch(() => null);
+        return open.focus();
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
 });

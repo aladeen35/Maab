@@ -4,12 +4,19 @@ import type { NextConfig } from 'next';
 // وتُبنى بـ npm run build:static (يستبعد نقاط /api مؤقتاً لأنها تحتاج خادماً)
 const STATIC = process.env.MAAB_STATIC === '1';
 const BASE = process.env.MAAB_BASE_PATH ?? '';
+// على Vercel تعمل النسخة الحية افتراضياً (قاعدة Supabase)، ما لم يُضبط الوضع صراحةً
+const MODE = process.env.NEXT_PUBLIC_MAAB_MODE ?? (process.env.VERCEL && !STATIC ? 'live' : '');
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   ...(BASE ? { basePath: BASE } : {}),
-  env: { NEXT_PUBLIC_BASE_PATH: BASE },
+  env: {
+    NEXT_PUBLIC_BASE_PATH: BASE,
+    NEXT_PUBLIC_MAAB_MODE: MODE,
+    // معرّف تطبيق Google واحد للخادم والمتصفح
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? '',
+  },
   ...(STATIC
     ? {
         output: 'export',
@@ -23,7 +30,7 @@ const nextConfig: NextConfig = {
     : {
         // صفحات المصحف والتفسير تُقرأ من الملفات عند الطلب، فتُضمَّن في حزمة الخادم صراحةً
         outputFileTracingIncludes: {
-          '/*/mushaf/*': ['src/lib/quran/pages/**/*', 'src/lib/quran/tafsir/**/*'],
+          '/**': ['src/lib/quran/pages/**/*', 'src/lib/quran/tafsir/**/*'],
         },
       }),
 };

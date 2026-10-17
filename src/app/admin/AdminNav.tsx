@@ -1,25 +1,28 @@
 'use client';
 
-import { CalendarCog, LayoutDashboard, Receipt, ScrollText, Settings, UserCheck } from 'lucide-react';
+import { Award, LayoutDashboard, Receipt, ScrollText, Settings, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
+type Badges = { payments: number; applications: number };
+
 const ADMIN_NAV = [
   { href: '/admin', label: 'لوحة اليوم', icon: LayoutDashboard, exact: true },
-  { href: '/admin/payments', label: 'التحويلات', icon: Receipt, badge: 6 },
-  { href: '/admin/teachers', label: 'طلبات المعلمات', icon: UserCheck, badge: 3 },
-  { href: '/admin#schedule', label: 'الجدولة', icon: CalendarCog },
+  { href: '/admin/payments', label: 'التحويلات', icon: Receipt, badge: 'payments' as const },
+  { href: '/admin/teachers', label: 'طلبات المعلمات', icon: UserCheck, badge: 'applications' as const },
+  { href: '/admin/certificates', label: 'الشهادات', icon: Award },
   { href: '/admin#audit', label: 'سجل التدقيق', icon: ScrollText },
-  { href: '/admin#settings', label: 'الإعدادات', icon: Settings },
+  { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
 ];
 
-export function AdminNav({ variant }: { variant: 'side' | 'top' }) {
+export function AdminNav({ variant, badges }: { variant: 'side' | 'top'; badges: Badges }) {
   const pathname = usePathname();
   return (
     <nav aria-label="أقسام الإدارة" className={variant === 'top' ? '-mx-4 overflow-x-auto px-4 [scrollbar-width:none]' : ''}>
       <ul className={variant === 'top' ? 'flex gap-2' : 'space-y-1'}>
-        {ADMIN_NAV.map(({ href, label, icon: Icon, exact, badge }) => {
+        {ADMIN_NAV.map(({ href, label, icon: Icon, exact, badge: key }) => {
+          const badge = key ? badges[key] : 0;
           const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <li key={href}>

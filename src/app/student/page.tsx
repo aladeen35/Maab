@@ -2,6 +2,7 @@ import { BookOpenText, ChevronLeft, LogOut } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LogoHorizontal } from '@/components/brand/Brand';
+import { CertificateList } from '@/components/certificate/CertificateList';
 import { NextSessionCard } from '@/components/features/NextSessionCard';
 import { PlainShell } from '@/components/shell/PlainShell';
 import { WaveHeader } from '@/components/shell/WaveHeader';
@@ -112,6 +113,7 @@ export default async function StudentHome() {
           <LogOut className="size-3.5" aria-hidden />
           اطلب من ولي أمرك رمزاً جديداً إن نسيت رمزك
         </p>
+        <CertificateList items={d.certificatesOf(me.id)} />
       </main>
     </PlainShell>
   );

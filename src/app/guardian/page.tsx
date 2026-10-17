@@ -21,6 +21,7 @@ import { formatRange } from '@/lib/quran';
 import { JUZ_NAMES, juzOrdinal } from '@/lib/quran/names';
 import { pageOf } from '@/lib/quran/server';
 import type { Student } from '@/lib/types';
+import { EnablePush } from '@/components/features/EnablePush';
 
 export const metadata: Metadata = { title: 'الرئيسية' };
 
@@ -69,6 +70,7 @@ export default async function GuardianHome() {
             </ButtonLink>
           </Card>
         )}
+        <EnablePush />
       </Page>
     </>
   );

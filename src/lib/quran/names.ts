@@ -11,11 +11,14 @@ const ORDINALS = [
 const TENS = ['', 'عشر', 'العشرون', 'الثلاثون'];
 const UNITS_F = ['', 'الحادي', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن', 'التاسع'];
 
-/** «الجزء الثامن والعشرون» */
-export function juzOrdinal(n: number): string {
+const TENS_GEN = ['', 'عشر', 'العشرين', 'الثلاثين'];
+
+/** «الجزء الثامن والعشرون»، وبالجر (case: 'gen') «حفظ الجزء الثامن والعشرين» */
+export function juzOrdinal(n: number, grammaticalCase: 'nom' | 'gen' = 'nom'): string {
+  const tens = grammaticalCase === 'gen' ? TENS_GEN : TENS;
   if (n <= 10) return `الجزء ${ORDINALS[n - 1]}`;
   if (n < 20) return `الجزء ${UNITS_F[n - 10]} عشر`;
   const t = Math.floor(n / 10);
   const u = n % 10;
-  return u === 0 ? `الجزء ${TENS[t]}` : `الجزء ${UNITS_F[u]} و${TENS[t]}`;
+  return u === 0 ? `الجزء ${tens[t]}` : `الجزء ${UNITS_F[u]} و${tens[t]}`;
 }

@@ -352,6 +352,16 @@ describe.skipIf(!URL_API)('واجهة /api/v1: المسار الكامل', () =>
     const notes = await db().select().from(t.notifications).where(and(eq(t.notifications.userId, u.salma), eq(t.notifications.channel, 'in_app')));
     expect(notes.find((n) => n.event === 'juz_completed')).toMatchObject({ title: 'مبروك الشرافة', body: expect.stringContaining('الجزء الثلاثون') });
     expect(notes.find((n) => n.event === 'report_ready')?.body).toContain('النبأ 1–16');
+    // شهادة جزء عمّ تصدر تلقائياً مرة واحدة، ويصل إشعارها برابطها
+    expect(r.json.data.certificates).toHaveLength(1);
+    const [cert] = await db().select().from(t.certificates).where(eq(t.certificates.studentId, childId));
+    expect(cert).toMatchObject({ kind: 'juz', juz: 30, title: 'إتمام حفظ الجزء الثلاثين', teacherName: expect.any(String) });
+    expect(cert.serial).toMatch(/^MAAB-C-\d{4}-\d{5}$/);
+    expect(cert.mastery).toBe(95);
+    expect(notes.find((n) => n.event === 'certificate_issued')?.data).toMatchObject({ code: cert.code });
+    const again = await call(api['sessions/[id]/report'].POST, `/sessions/${s.id}/report`, { cookie: cookies.mazahir, body, params: { id: s.id } });
+    expect(again.json.data.certificates).toEqual([]);
+    expect(await db().select().from(t.certificates).where(eq(t.certificates.studentId, childId))).toHaveLength(1);
 
     // الملاحظة الداخلية للمعلمة والمشرفة، لا لولية الأمر
     const forGuardian = await call(api['students/[id]/reports'].GET, `/students/${childId}/reports`, { cookie: cookies.salma, params: { id: childId } });

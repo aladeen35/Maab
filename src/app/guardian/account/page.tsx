@@ -8,6 +8,7 @@ import {
   UserRound,
   UsersRound,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 import type { Metadata } from 'next';
 import { MihrabFrame } from '@/components/brand/Brand';
@@ -72,7 +73,8 @@ export default async function Account() {
           <ThemeToggle />
         </Card>
 
-        <ListRow href="/legal/privacy" icon={<ShieldCheck className="size-5" />} label="الخصوصية والموافقات" sub="تنزيل بياناتي أو طلب حذف الحساب" />
+        <ListRow href="/legal/privacy" icon={<ShieldCheck className="size-5" />} label="الخصوصية والموافقات" sub="كيف نحفظ بياناتك وبيانات أبنائك" />
+        <ListRow href="/account/delete" icon={<Trash2 className="size-5" />} label="حذف الحساب" sub="يمحو بياناتك وبيانات أبنائك نهائياً" tone="danger" />
         <ListRow href="/legal/cancellation" icon={<Headset className="size-5" />} label="سياسات الحصص والدعم" />
         <LogoutRow />
       </Page>

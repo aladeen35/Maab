@@ -1,0 +1,124 @@
+# تطبيق أندرويد (TWA): يُبنى من GitHub دون حاسوب.
+# - عند تعديل android/: فحص أن المشروع يُبنى (بلا توقيع).
+# - يدوياً (Actions ← Android ← Run workflow) برابط الموقع الحي: APK للتثبيت المباشر
+#   وAAB لـGoogle Play، موقّعان بمفتاح ثابت يُولَّد أول مرة ويُحفظ مشفّراً في
+#   المستودع بكلمة السر ANDROID_KEYSTORE_PASSWORD، وبصمته تُضاف لملف الربط
+#   (/.well-known/assetlinks.json) فيفتح التطبيق بلا شريط متصفح.
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'رابط الموقع الحي، مثل https://maab-academy.vercel.app'
+        required: true
+
+concurrency:
+  group: android
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: بناء تجريبي بلا توقيع
+        run: gradle -p android assembleRelease -PappUrl=https://maab.example.com --no-daemon
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: مفتاح التوقيع
+        id: key
+        env:
+          PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ ${#PASS} -lt 12 ]; then
+            echo "::error::أضيفي سرّ ANDROID_KEYSTORE_PASSWORD (12 حرفاً على الأقل) من Settings ← Secrets and variables ← Actions، ثم أعيدي التشغيل."
+            exit 1
+          fi
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -f android/release.keystore.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/release.keystore.enc -out "$KS" -pass env:PASS \
+              || { echo "::error::كلمة السر لا تفتح المفتاح المحفوظ. استعملي كلمة السر نفسها التي أُنشئ بها أول مرة."; exit 1; }
+          else
+            keytool -genkeypair -keystore "$KS" -alias maab -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=Maab Academy, O=Maab, C=SD"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$KS" -out android/release.keystore.enc -pass env:PASS
+          fi
+          SHA=$(keytool -list -v -keystore "$KS" -alias maab -storepass "$PASS" | grep -m1 'SHA256:' | sed 's/.*SHA256: //')
+          echo "keystore=$KS" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: البناء
+        env:
+          MAAB_KEYSTORE: ${{ steps.key.outputs.keystore }}
+          MAAB_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          gradle -p android assembleRelease bundleRelease --no-daemon \
+            -PappUrl="${{ inputs.app_url }}" -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/maab-1.0.${{ github.run_number }}.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab dist/maab-1.0.${{ github.run_number }}.aab
+
+      - name: حفظ المفتاح المشفّر وبصمته في الموقع
+        env:
+          SHA: ${{ steps.key.outputs.sha }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'src/lib/android.ts';
+            const s = fs.readFileSync(p, 'utf8');
+            if (s.includes(process.env.SHA)) process.exit(0);
+            const out = s.replace(/export const ANDROID_FINGERPRINTS: string\[\] = \[([^\]]*)\];/, (_, inner) => {
+              const items = inner.split(',').map((x) => x.trim()).filter(Boolean);
+              items.push(\"'\" + process.env.SHA + \"'\");
+              return 'export const ANDROID_FINGERPRINTS: string[] = [' + items.join(', ') + '];';
+            });
+            fs.writeFileSync(p, out);
+          "
+          if [ -n "$(git status --porcelain android/release.keystore.enc src/lib/android.ts)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add android/release.keystore.enc src/lib/android.ts
+            git commit -m "أندرويد: مفتاح التوقيع المشفّر وبصمته لربط التطبيق بالموقع"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: الإصدار
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.key.outputs.sha }}
+        run: |
+          gh release create "android-1.0.${{ github.run_number }}" dist/* \
+            --title "تطبيق مآب للأندرويد 1.0.${{ github.run_number }}" \
+            --notes "للتجربة: نزّلي ملف APK على جوال أندرويد وثبّتيه (اسمحي بالتثبيت من مصادر غير معروفة). ملف AAB لرفعه على Google Play.
+
+          الموقع: ${{ inputs.app_url }}
+          بصمة التوقيع: $SHA"

@@ -63,6 +63,7 @@ export function GoogleButton({ country }: { country: CountryCode }) {
       });
       g.accounts.id.renderButton(el, { theme: 'outline', size: 'large', width: el.clientWidth, text: 'continue_with', locale: 'ar' });
     };
+    script.onerror = () => setError('تعذّر تحميل زر Google، تحققي من الاتصال أو ادخلي بالبريد');
     document.head.appendChild(script);
     return () => script.remove();
   }, [router]);

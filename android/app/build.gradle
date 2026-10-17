@@ -1,0 +1,101 @@
+/*
+ * مبني على قالب Bubblewrap من Google (Apache 2.0). رابط الموقع الحي يُمرَّر عند
+ * البناء: gradle assembleRelease -PappUrl=https://maab-academy.vercel.app
+ */
+plugins {
+    id 'com.android.application'
+}
+
+def appUrl = (findProperty('appUrl') ?: System.getenv('APP_URL') ?: '').toString().trim().replaceAll('/+$', '')
+if (!appUrl.startsWith('https://')) {
+    throw new GradleException('appUrl مطلوب: رابط التطبيق الحي بـ https، مثل -PappUrl=https://maab-academy.vercel.app')
+}
+def host = new URI(appUrl).host
+
+def twa = [
+    applicationId: 'com.maab.academy',
+    name: 'مآب',
+    launcherName: 'مآب',
+    launchPath: '/start',
+    themeColor: '#0E3D31',
+    themeColorDark: '#03291F',
+    navigationColor: '#0E3D31',
+    navigationColorDark: '#03291F',
+    navigationDividerColor: '#00000000',
+    navigationDividerColorDark: '#00000000',
+    backgroundColor: '#F5EFE2',
+    enableNotifications: true,
+    splashScreenFadeOutDuration: 300,
+    generatorApp: 'bubblewrap-template',
+    fallbackType: 'customtabs',
+    enableSiteSettingsShortcut: 'true',
+    orientation: 'portrait',
+]
+
+android {
+    compileSdk 36
+    namespace 'com.maab.academy'
+
+    defaultConfig {
+        applicationId twa.applicationId
+        minSdk 21
+        targetSdk 36
+        versionCode((findProperty('versionCode') ?: '1').toString().toInteger())
+        versionName((findProperty('versionName') ?: '1.0.0').toString())
+
+        resValue 'string', 'appName', twa.name
+        resValue 'string', 'launcherName', twa.launcherName
+        resValue 'string', 'launchUrl', appUrl + twa.launchPath
+        resValue 'string', 'webManifestUrl', appUrl + '/manifest.webmanifest'
+        resValue 'string', 'hostName', host
+        resValue 'string', 'assetStatements',
+                '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"],' +
+                        '\\"target\\": {\\"namespace\\": \\"web\\", \\"site\\": \\"https://' +
+                        host + '\\"}}]'
+        resValue 'color', 'colorPrimary', twa.themeColor
+        resValue 'color', 'colorPrimaryDark', twa.themeColorDark
+        resValue 'color', 'navigationColor', twa.navigationColor
+        resValue 'color', 'navigationColorDark', twa.navigationColorDark
+        resValue 'color', 'navigationDividerColor', twa.navigationDividerColor
+        resValue 'color', 'navigationDividerColorDark', twa.navigationDividerColorDark
+        resValue 'color', 'backgroundColor', twa.backgroundColor
+        resValue 'string', 'providerAuthority', twa.applicationId + '.fileprovider'
+        resValue 'bool', 'enableNotification', twa.enableNotifications.toString()
+        resValue 'integer', 'splashScreenFadeOutDuration', twa.splashScreenFadeOutDuration.toString()
+        resValue 'string', 'generatorApp', twa.generatorApp
+        resValue 'string', 'fallbackType', twa.fallbackType
+        resValue 'bool', 'enableSiteSettingsShortcut', twa.enableSiteSettingsShortcut
+        resValue 'string', 'orientation', twa.orientation
+    }
+
+    // مفتاح التوقيع من سير عمل GitHub (يُولَّد مرة ويُحفظ مشفّراً في المستودع)
+    def keystore = System.getenv('MAAB_KEYSTORE')
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile file(keystore)
+                storePassword System.getenv('MAAB_KEYSTORE_PASSWORD')
+                keyAlias 'maab'
+                keyPassword System.getenv('MAAB_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            if (keystore) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint {
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
+}

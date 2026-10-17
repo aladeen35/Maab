@@ -13,6 +13,7 @@ import {
   boolean,
   char,
   check,
+  customType,
   date,
   index,
   inet,
@@ -105,6 +106,7 @@ export const notificationStatus = pgEnum('notification_status', ['queued', 'sent
 export const fileKind = pgEnum('file_kind', ['id_document', 'ijazah', 'certificate', 'recording', 'receipt', 'avatar']);
 export const meetingStatus = pgEnum('meeting_status', ['pending', 'created', 'failed']);
 export const jobStatus = pgEnum('job_status', ['queued', 'running', 'done', 'failed']);
+export const certificateKind = pgEnum('certificate_kind', ['juz', 'khatm', 'course']);
 
 // ═══ 1. الهوية والصلاحيات ═══
 
@@ -135,9 +137,10 @@ export const users = pgTable(
     uniqueIndex('users_phone_uq').on(t.phone).where(sql`${t.deletedAt} is null`),
     uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.deletedAt} is null`),
     uniqueIndex('users_google_uq').on(t.googleSub),
+    // الحساب المحذوف تُمحى معرّفاته كلها
     check(
       'users_identifier_ck',
-      sql`${t.phone} is not null or ${t.email} is not null or ${t.googleSub} is not null or ${t.studentLogin}`,
+      sql`${t.phone} is not null or ${t.email} is not null or ${t.googleSub} is not null or ${t.studentLogin} or ${t.deletedAt} is not null`,
     ),
     check('users_phone_e164_ck', sql`${t.phone} is null or ${t.phone} ~ '^\\+[1-9][0-9]{6,14}$'`),
   ],
@@ -1171,3 +1174,99 @@ export const idempotencyKeys = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.key] }), index('idempotency_created_idx').on(t.createdAt)],
 );
+
+// ═══ 8. الشهادات والتشغيل المجاني ═══
+
+/**
+ * شهادات الإتمام: تُصدر تلقائياً عند إتمام جزء أو ختم القرآن، ويدوياً من
+ * الإشراف لإتمام دورة. الاسم ونص الإنجاز يُحفظان وقت الإصدار فلا يتغيّران
+ * لاحقاً، والرمز العام غير قابل للتخمين ويفتح صفحة التحقق.
+ */
+export const certificates = pgTable(
+  'certificates',
+  {
+    id: id(),
+    serial: text().notNull().unique(),
+    code: text().notNull().unique(),
+    studentId: uuid()
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    teacherId: uuid().references(() => teachers.id, { onDelete: 'set null' }),
+    kind: certificateKind().notNull(),
+    juz: smallint(),
+    title: text().notNull(),
+    body: text().notNull(),
+    studentName: text().notNull(),
+    teacherName: text(),
+    mastery: numeric({ precision: 5, scale: 2, mode: 'number' }),
+    issuedAt: ts().notNull().defaultNow(),
+    issuedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    revokedAt: ts(),
+    revokedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    revokeReason: text(),
+  },
+  (t) => [
+    index('certificates_student_idx').on(t.studentId, t.issuedAt),
+    // الشهادة التلقائية مرة واحدة لكل جزء أو ختمة، فتعديل التقرير لا يكرّرها
+    uniqueIndex('certificates_auto_uq')
+      .on(t.studentId, t.kind, sql`coalesce(${t.juz}, 0)`)
+      .where(sql`${t.kind} in ('juz', 'khatm') and ${t.revokedAt} is null`),
+    check('certificates_juz_ck', sql`(${t.kind} = 'juz') = (${t.juz} is not null) and (${t.juz} is null or ${t.juz} between 1 and 30)`),
+  ],
+);
+
+/** تشغيل المهام بالنبضة الدقيقية (بلا عامل دائم): خانة واحدة لكل مهمة في كل دقيقة */
+export const jobRuns = pgTable(
+  'job_runs',
+  {
+    name: text().notNull(),
+    slot: ts().notNull(),
+    startedAt: ts().notNull().defaultNow(),
+    finishedAt: ts(),
+    ok: boolean(),
+    result: jsonb(),
+    error: text(),
+  },
+  (t) => [primaryKey({ columns: [t.name, t.slot] }), index('job_runs_started_idx').on(t.startedAt)],
+);
+
+/** ربط الخدمات الخارجية (حساب Google للحصص، مفاتيح الإشعارات) — للنظام وحده، والأسرار مشفّرة */
+export const integrations = pgTable('integrations', {
+  key: text().primaryKey(),
+  data: jsonb().$type<Record<string, unknown>>().notNull(),
+  updatedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: ts().notNull().defaultNow(),
+});
+
+/** اشتراكات إشعارات الجهاز (Web Push) لكل مستخدم ومتصفح أو تطبيق */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: id(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text().notNull().unique(),
+    p256dh: text().notNull(),
+    auth: text().notNull(),
+    userAgent: text(),
+    failures: smallint().notNull().default(0),
+    lastSuccessAt: ts(),
+    createdAt: ts().notNull().defaultNow(),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);
+
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => 'bytea',
+  toDriver: (v) => Buffer.from(v),
+  fromDriver: (v) => new Uint8Array(v),
+});
+
+/** محتوى الملفات حين يكون التخزين في القاعدة نفسها (الاستضافة المجانية بلا قرص دائم) */
+export const fileBlobs = pgTable('file_blobs', {
+  fileId: uuid()
+    .primaryKey()
+    .references(() => files.id, { onDelete: 'cascade' }),
+  bytes: bytea().notNull(),
+});

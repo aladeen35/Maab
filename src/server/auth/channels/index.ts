@@ -65,11 +65,25 @@ async function smsUnifonic(to: string, text: string) {
 
 let transporter: Transporter | undefined;
 
-async function emailSmtp(to: string, subject: string, text: string) {
+/** SMTP_URL صريح، أو Gmail بكلمة مرور تطبيق (smtp.gmail.com:465) */
+function createTransport(): Transporter {
   const e = env();
-  if (!e.SMTP_URL) throw new ChannelError('email', 'SMTP غير مهيّأ');
-  transporter ??= nodemailer.createTransport(e.SMTP_URL);
-  await transporter.sendMail({ from: e.EMAIL_FROM, to, subject, text });
+  if (e.SMTP_URL) return nodemailer.createTransport(e.SMTP_URL);
+  if (e.GMAIL_USER && e.GMAIL_APP_PASSWORD) {
+    return nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      // كلمة مرور التطبيق تُعرض في Google بمسافات؛ تُزال هنا
+      auth: { user: e.GMAIL_USER, pass: e.GMAIL_APP_PASSWORD.replace(/\s+/g, '') },
+    });
+  }
+  throw new ChannelError('email', 'البريد غير مهيّأ');
+}
+
+async function emailSmtp(to: string, subject: string, text: string) {
+  transporter ??= createTransport();
+  await transporter.sendMail({ from: env().EMAIL_FROM, to, subject, text });
 }
 
 /** يرسل رمز الدخول عبر القناة المطلوبة */

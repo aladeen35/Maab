@@ -7,6 +7,7 @@ import type { PlanId, Duration } from '../domain/billing';
 import type { Currency } from '../domain/market';
 import type {
   AppNotification,
+  Certificate,
   Payment,
   PaymentAccount,
   Report,
@@ -497,3 +498,39 @@ export const monthlyAyahs: Record<string, { month: string; value: number }[]> = 
   s1: [42, 48, 62, 55, 80, 126].map((value, i) => ({ month: MONTHS[i], value })),
   s2: [8, 10, 12, 9, 14, 16].map((value, i) => ({ month: MONTHS[i], value })),
 };
+
+/** شهادات العرض: جزء عمّ لرؤى (مع إشعار الشرافة)، ودورة أحكام النون لمحمد */
+export const certificates: Certificate[] = [
+  {
+    id: 'c1',
+    serial: 'MAAB-C-2026-00012',
+    code: 'RUA3JUZ2KM',
+    kind: 'juz',
+    juz: 30,
+    title: 'إتمام حفظ الجزء الثلاثين',
+    body: 'أتمّت الطالبة حفظ الجزء الثلاثين (جزء عمّ) كاملاً بإشراف المعلمة أ. مزاهر عبدالرحيم.',
+    studentId: 's1',
+    studentName: 'رؤى عمر الطيب',
+    teacherName: 'أ. مزاهر عبدالرحيم',
+    mastery: 93.5,
+    issuedAt: riyadh('2026-09-29', '17:50'),
+    revokedAt: null,
+    revokeReason: null,
+  },
+  {
+    id: 'c2',
+    serial: 'MAAB-C-2026-00015',
+    code: 'MHD7TJW5QN',
+    kind: 'course',
+    juz: null,
+    title: 'دورة أحكام النون الساكنة والتنوين',
+    body: 'أتمّ الطالب دورة أحكام النون الساكنة والتنوين (الإظهار والإدغام والإقلاب والإخفاء) تطبيقاً على جزء عمّ.',
+    studentId: 's2',
+    studentName: 'محمد عمر الطيب',
+    teacherName: 'أ. هبة الأمين',
+    mastery: null,
+    issuedAt: riyadh('2026-10-01', '16:00'),
+    revokedAt: null,
+    revokeReason: null,
+  },
+];

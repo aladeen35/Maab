@@ -1,0 +1,2 @@
+ALTER TABLE "users" DROP CONSTRAINT "users_identifier_ck";--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_identifier_ck" CHECK ("users"."phone" is not null or "users"."email" is not null or "users"."google_sub" is not null or "users"."student_login" or "users"."deleted_at" is not null);

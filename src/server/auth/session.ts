@@ -3,7 +3,7 @@
 // بعد 30 دقيقة خمول وتتجدّد مع كل طلب، وجلسة بقية المستخدمين 30 يوماً.
 import { jwtVerify, SignJWT } from 'jose';
 import { isStaff, type Role } from '@/lib/domain/permissions';
-import { env, isProduction } from '../env';
+import { authSecret, isProduction } from '../env';
 
 export const SESSION_COOKIE = 'maab_session';
 const USER_TTL_SEC = 30 * 86_400;
@@ -11,7 +11,7 @@ const STAFF_IDLE_SEC = 30 * 60;
 
 export type Session = { userId: string; roles: Role[]; impersonatedBy?: string };
 
-const key = () => new TextEncoder().encode(env().AUTH_SECRET);
+const key = () => new TextEncoder().encode(authSecret());
 
 export async function signSession(s: Session): Promise<{ token: string; maxAge: number }> {
   const maxAge = isStaff(s.roles) ? STAFF_IDLE_SEC : USER_TTL_SEC;

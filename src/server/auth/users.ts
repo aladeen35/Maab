@@ -6,6 +6,8 @@ import { currencyFor, defaultTimezone, type CountryCode } from '@/lib/domain/mar
 import { isStaff, type Role } from '@/lib/domain/permissions';
 import { asSystem, type Tx } from '../db/client';
 import { userRoles, users } from '../db/schema';
+import { adminEmails } from '../env';
+import { audit } from '../services/audit';
 
 export type User = typeof users.$inferSelect;
 
@@ -55,8 +57,23 @@ export async function signInUser(id: SignInIdentity): Promise<{ user: User; role
       .set({ lastLoginAt: new Date(), ...(id.kind === 'google' && !user.googleSub ? { googleSub: id.sub } : {}) })
       .where(eq(users.id, user.id))
       .returning();
+    await bootstrapAdmin(tx, id, updated.id);
     return { user: updated, roles: await rolesOf(tx, user.id), created };
   });
+}
+
+/**
+ * المدير العام الأول: من أثبت ملكية بريد مذكور في ADMIN_EMAILS (برمز البريد
+ * أو بحساب Google موثّق) يُمنح الدور عند دخوله، فلا يحتاج التشغيل الأول قاعدة
+ * بيانات يدوية. بقية الأدوار تُمنح من لوحة الإدارة.
+ */
+async function bootstrapAdmin(tx: Tx, id: SignInIdentity, userId: string) {
+  const proven = id.kind === 'email' ? id.email : id.kind === 'google' ? id.email : null;
+  if (!proven || !adminEmails().includes(proven.toLowerCase())) return;
+  const granted = await tx.insert(userRoles).values({ userId, role: 'super_admin' }).onConflictDoNothing().returning({ role: userRoles.role });
+  if (granted.length) {
+    await audit(tx, null, { action: 'role.bootstrap', entity: 'user_roles', entityId: userId, after: { role: 'super_admin', email: proven } });
+  }
 }
 
 /** الوجهة بعد الدخول حسب الأدوار: من لا دور له يُكمل التسجيل أولاً */

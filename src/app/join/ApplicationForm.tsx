@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn';
 import type { CountryCode } from '@/lib/domain/market';
 import { parsePhone } from '@/lib/phone';
 import { TEACHER_DOCUMENTS } from '@/lib/domain/teachers';
+import { MAX_REQUEST_BYTES, mb, shrinkImage } from '@/lib/upload';
 
 // الأنواع والأحجام المسموحة (القسم 15)
 const DOC_TYPES = 'application/pdf,image/jpeg,image/png';
@@ -63,20 +64,31 @@ export function ApplicationForm() {
         if (m.length) return;
         const phone = parsePhone(f.phone, country);
         if (!phone) return setError('رقم الجوال غير صحيح، تأكدي من الدولة والرقم');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setError('البريد الإلكتروني لازم وصيغته صحيحة، به تدخلين للتطبيق');
         if (!categories.length) return setError('اختاري فئة واحدة على الأقل');
         if (!IS_LIVE) return setSent(true);
         const form = new FormData();
         form.set('fullName', f.name.trim());
         form.set('phone', phone.e164);
         form.set('country', phone.country);
-        if (f.email.trim()) form.set('email', f.email.trim());
+        form.set('email', f.email.trim().toLowerCase());
         if (f.city.trim()) form.set('city', f.city.trim());
         form.set('ijazah', f.ijazah.trim());
         form.set('experience', f.experience.trim());
         for (const c of categories) form.append('categories', c);
-        for (const [key, file] of Object.entries(files)) form.append(FIELD[key], file);
         setBusy(true);
         setError(undefined);
+        // الصور تُصغَّر، والطلب كله دون حد الاستضافة (4 ميجابايت)
+        let total = 0;
+        for (const [key, file] of Object.entries(files)) {
+          const ready = await shrinkImage(file);
+          total += ready.size;
+          form.append(FIELD[key], ready);
+        }
+        if (total > MAX_REQUEST_BYTES) {
+          setBusy(false);
+          return setError(`حجم المستندات معاً ${mb(total)} والحد 4 ميجابايت: صوّري المستندات بالكاميرا بدل ملفات PDF الكبيرة، واجعلي التسجيل دقيقة أو دقيقتين.`);
+        }
         try {
           await api('/teacher-applications', { form });
           setSent(true);
@@ -89,7 +101,7 @@ export function ApplicationForm() {
       <Card className="space-y-4 p-4">
         <TextField id="t-name" label="الاسم الكامل" required autoComplete="name" value={f.name} onChange={set('name')} />
         <PhoneInput id="t-phone" label="رقم الجوال (واتساب)" country={country} onCountry={setCountry} value={f.phone} onValue={(v) => setF((x) => ({ ...x, phone: v }))} required />
-        <TextField id="t-email" label="البريد الإلكتروني (اختياري)" type="email" dir="ltr" className="[&_input]:text-left" value={f.email} onChange={set('email')} />
+        <TextField id="t-email" label="البريد الإلكتروني (للدخول والإشعارات)" type="email" dir="ltr" className="[&_input]:text-left" value={f.email} onChange={set('email')} />
         <TextField id="t-city" label="المدينة" list="t-cities" placeholder="مثل: الخرطوم، الرياض" value={f.city} onChange={set('city')} />
         <datalist id="t-cities">
           {CITIES.map((c) => (
@@ -129,7 +141,7 @@ export function ApplicationForm() {
                 <span className="block text-sm font-bold text-ink">
                   {d.label} {d.required && <span className="text-danger">*</span>}
                 </span>
-                <span className="block truncate text-xs text-muted">{name ?? d.note ?? (isAudio ? 'MP3 أو M4A حتى 10 ميجابايت' : 'PDF أو صورة حتى 5 ميجابايت')}</span>
+                <span className="block truncate text-xs text-muted">{name ?? d.note ?? (isAudio ? 'MP3 أو M4A، دقيقة أو دقيقتان (حتى 3 ميجابايت)' : 'صورة بالكاميرا أو PDF صغير')}</span>
               </span>
               <input
                 type="file"

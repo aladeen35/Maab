@@ -62,7 +62,8 @@ export const S = {
     fullName: z.string().trim().min(3).max(80),
     phone: z.string().min(6).max(20),
     country,
-    email: z.email().max(200).nullish(),
+    // البريد لازم: به تدخل المعلمة وتصلها الإشعارات حين لا يكون الدخول بالجوال مفعّلاً
+    email: z.email().max(200),
     city: z.string().max(60).nullish(),
     ijazah: z.string().trim().min(3).max(300),
     experience: z.string().trim().min(3).max(1000),
@@ -135,6 +136,28 @@ export const S = {
   auditQuery: z.object({ entity: z.string().max(60).optional(), entityId: z.string().max(80).optional(), before: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(200).optional() }),
   impersonate: z.object({ userId: uuid, reason: z.string().trim().min(5).max(300) }),
   fileContent: z.object({ exp: z.coerce.number().int(), sig: z.string().min(10).max(100) }),
+  paymentAccount: z.object({
+    method: z.enum(['bank_transfer_sa', 'sudan_transfer', 'international_transfer']),
+    currency: z.enum(['SAR', 'SDG', 'USD']),
+    title: z.string().trim().min(2).max(80),
+    bankName: z.string().trim().min(2).max(80),
+    accountName: z.string().trim().min(2).max(120),
+    accountNumber: z.string().trim().min(4).max(60),
+    instructions: z.string().trim().max(300).nullish(),
+    active: z.boolean().default(true),
+  }),
+  certificateIssue: z.object({
+    studentId: uuid,
+    title: z.string().trim().min(4).max(80),
+    body: z.string().trim().min(10).max(300),
+  }),
+  certificateRevoke: z.object({ reason: z.string().trim().min(5).max(300) }),
+  pushSubscribe: z.object({
+    endpoint: z.url().max(1000),
+    keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
+  }),
+  pushUnsubscribe: z.object({ endpoint: z.url().max(1000) }),
+  accountDelete: z.object({ confirm: z.literal('احذف حسابي') }),
 };
 
 export type Endpoint = {
@@ -202,6 +225,23 @@ export const ENDPOINTS: Endpoint[] = [
   { method: 'GET', path: '/admin/audit-logs', summary: 'سجل التدقيق', auth: 'user', can: ['audit.read'], query: S.auditQuery },
   { method: 'POST', path: '/admin/impersonate', summary: 'الدخول بحساب مستخدم للدعم', auth: 'user', can: ['support.impersonate'], body: S.impersonate },
   { method: 'DELETE', path: '/admin/impersonate', summary: 'إنهاء الدخول بحساب مستخدم', auth: 'user' },
+  { method: 'GET', path: '/admin/system', summary: 'حالة التشغيل والقنوات وربط Google', auth: 'user', can: ['settings.manage'] },
+  { method: 'GET', path: '/admin/google/connect', summary: 'ربط حساب Google للحصص (تحويل لموافقة Google)', auth: 'user', can: ['settings.manage'] },
+  { method: 'DELETE', path: '/admin/google/connect', summary: 'فصل حساب Google', auth: 'user', can: ['settings.manage'] },
+  { method: 'POST', path: '/admin/google/test', summary: 'إنشاء رابط Meet تجريبي', auth: 'user', can: ['settings.manage'] },
+  { method: 'POST', path: '/admin/meetings/regenerate', summary: 'إعادة إنشاء روابط الحصص التجريبية بعد ربط Google', auth: 'user', can: ['settings.manage'] },
+  { method: 'POST', path: '/admin/payment-accounts', summary: 'إضافة حساب استلام', auth: 'user', can: ['prices.manage'], body: S.paymentAccount },
+  { method: 'PUT', path: '/admin/payment-accounts/{id}', summary: 'تعديل حساب استلام', auth: 'user', can: ['prices.manage'], body: S.paymentAccount },
+  { method: 'GET', path: '/certificates', summary: 'الشهادات المتاحة للمستخدم', auth: 'user' },
+  { method: 'POST', path: '/certificates', summary: 'إصدار شهادة إتمام دورة', auth: 'user', can: ['certificates.issue'], body: S.certificateIssue },
+  { method: 'POST', path: '/certificates/{id}/revoke', summary: 'إلغاء شهادة بسبب', auth: 'user', can: ['certificates.issue'], body: S.certificateRevoke },
+  { method: 'GET', path: '/certificates/verify/{code}', summary: 'التحقق العام من شهادة برمزها', auth: 'public' },
+  { method: 'GET', path: '/push/key', summary: 'المفتاح العام لإشعارات الجهاز', auth: 'public' },
+  { method: 'POST', path: '/push/subscriptions', summary: 'تفعيل إشعارات هذا الجهاز', auth: 'user', body: S.pushSubscribe },
+  { method: 'DELETE', path: '/push/subscriptions', summary: 'إيقاف إشعارات هذا الجهاز', auth: 'user', body: S.pushUnsubscribe },
+  { method: 'POST', path: '/push/test', summary: 'إشعار تجريبي لأجهزتي', auth: 'user' },
+  { method: 'DELETE', path: '/me', summary: 'حذف الحساب نهائياً (شرط Google Play)', auth: 'user', body: S.accountDelete },
+  { method: 'POST', path: '/internal/tick', summary: 'نبضة المهام كل دقيقة (pg_cron)', auth: 'public' },
 ];
 
 /** ملف OpenAPI 3.1 من العقد نفسه */

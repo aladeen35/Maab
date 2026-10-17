@@ -1,61 +1,70 @@
-// روابط الحصص (القسم 8): تُنشأ تلقائياً من حساب Gmail واحد تملكه الأكاديمية
-// عبر Google Calendar API. المزوّد معزول هنا، فالانتقال لمزوّد آخر يغيّر هذا
-// الملف وحده. في التطوير يُنشئ المزوّد الوهمي رابطاً شكلياً.
+// روابط الحصص (القسم 8): تُنشأ تلقائياً من حساب Google واحد تملكه الأكاديمية،
+// يُربط من لوحة الإدارة (أو برمز تحديث في متغيرات البيئة). الأصل غرفة Meet
+// عبر Meet API بإعداد «مفتوحة لمن معه الرابط»، فتدخل المعلمة والطالب دون أن
+// ينتظرا قبول صاحب الحساب الغائب؛ والاحتياط موعد تقويم بغرفة Meet. المزوّد
+// معزول هنا، وفي التطوير يُنشئ المزوّد الوهمي رابطاً شكلياً.
 import { randomBytes } from 'node:crypto';
 import { and, asc, eq, inArray, lt } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { meetings, sessions, students, teachers } from '../db/schema';
 import { env } from '../env';
+import { googleMeetLink } from './integrations';
 
 export const MAX_MEETING_ATTEMPTS = 5;
 
 type MeetingInput = { sessionId: string; startsAt: Date; endsAt: Date; title: string };
-type Created = { eventId: string; joinUrl: string };
+type Created = { eventId: string; joinUrl: string; provider: string };
 
 interface MeetingProvider {
+  name: string;
   create(m: MeetingInput): Promise<Created>;
   update(eventId: string, m: MeetingInput): Promise<void>;
   cancel(eventId: string): Promise<void>;
 }
 
 const mock: MeetingProvider = {
+  name: 'mock',
   async create(m) {
-    const code = (n: number) =>
-      Array.from(randomBytes(n), (b) => 'abcdefghijkmnopqrstuvwxyz'[b % 25]).join('');
-    return { eventId: `mock-${m.sessionId}`, joinUrl: `https://meet.google.com/${code(3)}-${code(4)}-${code(3)}` };
+    const code = (n: number) => Array.from(randomBytes(n), (b) => 'abcdefghijkmnopqrstuvwxyz'[b % 25]).join('');
+    return { eventId: `mock-${m.sessionId}`, joinUrl: `https://meet.google.com/${code(3)}-${code(4)}-${code(3)}`, provider: 'mock' };
   },
   async update() {},
   async cancel() {},
 };
 
-let token: { value: string; exp: number } | undefined;
+let token: { value: string; exp: number; refresh: string } | undefined;
 
-async function googleToken(): Promise<string> {
-  if (token && token.exp > Date.now() + 60_000) return token.value;
+async function googleToken(refreshToken: string): Promise<string> {
+  if (token && token.refresh === refreshToken && token.exp > Date.now() + 60_000) return token.value;
   const e = env();
-  if (!e.GOOGLE_CLIENT_ID || !e.GOOGLE_CLIENT_SECRET || !e.GOOGLE_REFRESH_TOKEN) throw new Error('Google Calendar غير مهيّأ');
+  if (!e.GOOGLE_CLIENT_ID || !e.GOOGLE_CLIENT_SECRET) throw new Error('GOOGLE_CLIENT_ID وGOOGLE_CLIENT_SECRET غير مضبوطين');
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    body: new URLSearchParams({
-      client_id: e.GOOGLE_CLIENT_ID,
-      client_secret: e.GOOGLE_CLIENT_SECRET,
-      refresh_token: e.GOOGLE_REFRESH_TOKEN,
-      grant_type: 'refresh_token',
-    }),
+    body: new URLSearchParams({ client_id: e.GOOGLE_CLIENT_ID, client_secret: e.GOOGLE_CLIENT_SECRET, refresh_token: refreshToken, grant_type: 'refresh_token' }),
   });
-  if (!res.ok) throw new Error(`Google OAuth ${res.status}`);
+  if (!res.ok) throw new Error(`Google OAuth ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const json = (await res.json()) as { access_token: string; expires_in: number };
-  token = { value: json.access_token, exp: Date.now() + json.expires_in * 1000 };
+  token = { value: json.access_token, exp: Date.now() + json.expires_in * 1000, refresh: refreshToken };
   return token.value;
 }
 
-const calendar = () => `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env().GOOGLE_CALENDAR_ID ?? 'primary')}/events`;
+const calendarUrl = () => `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(env().GOOGLE_CALENDAR_ID ?? 'primary')}/events`;
 
-const google: MeetingProvider = {
-  async create(m) {
-    const res = await fetch(`${calendar()}?conferenceDataVersion=1&sendUpdates=none`, {
+function google(refreshToken: string): MeetingProvider {
+  const auth = async (extra: Record<string, string> = {}) => ({ Authorization: `Bearer ${await googleToken(refreshToken)}`, ...extra });
+
+  async function createSpace(config: Record<string, string> | null): Promise<Response> {
+    return fetch('https://meet.googleapis.com/v2/spaces', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
+      headers: await auth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(config ? { config } : {}),
+    });
+  }
+
+  async function createEvent(m: MeetingInput): Promise<Created> {
+    const res = await fetch(`${calendarUrl()}?conferenceDataVersion=1&sendUpdates=none`, {
+      method: 'POST',
+      headers: await auth({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         summary: m.title,
         start: { dateTime: m.startsAt.toISOString() },
@@ -68,23 +77,58 @@ const google: MeetingProvider = {
     if (!res.ok) throw new Error(`Google Calendar ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const ev = (await res.json()) as { id: string; hangoutLink?: string };
     if (!ev.hangoutLink) throw new Error('لم يُنشأ رابط Meet');
-    return { eventId: ev.id, joinUrl: ev.hangoutLink };
-  },
-  async update(eventId, m) {
-    const res = await fetch(`${calendar()}/${eventId}?sendUpdates=none`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${await googleToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start: { dateTime: m.startsAt.toISOString() }, end: { dateTime: m.endsAt.toISOString() } }),
-    });
-    if (!res.ok) throw new Error(`Google Calendar ${res.status}`);
-  },
-  async cancel(eventId) {
-    const res = await fetch(`${calendar()}/${eventId}?sendUpdates=none`, { method: 'DELETE', headers: { Authorization: `Bearer ${await googleToken()}` } });
-    if (!res.ok && res.status !== 410 && res.status !== 404) throw new Error(`Google Calendar ${res.status}`);
-  },
-};
+    return { eventId: ev.id, joinUrl: ev.hangoutLink, provider: 'google_calendar' };
+  }
 
-export const provider = (): MeetingProvider => (env().MEETING_PROVIDER === 'google' ? google : mock);
+  return {
+    name: 'google',
+    async create(m) {
+      // غرفة مفتوحة لمن معه الرابط؛ إن رُفض الإعداد تُنشأ بالإعداد الافتراضي
+      let res = await createSpace({ accessType: 'OPEN', entryPointAccess: 'ALL' });
+      if (res.status === 400) res = await createSpace(null);
+      if (res.ok) {
+        const space = (await res.json()) as { name: string; meetingUri: string };
+        return { eventId: space.name, joinUrl: space.meetingUri, provider: 'google_meet_api' };
+      }
+      // Meet API غير مفعّلة في المشروع أو النطاق غير ممنوح: موعد تقويم بغرفة Meet
+      if (res.status === 403 || res.status === 404) return createEvent(m);
+      throw new Error(`Google Meet ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    },
+    async update(eventId, m) {
+      // غرفة Meet لا موعد لها، فلا يلزم تحديثها عند إعادة الجدولة
+      if (eventId.startsWith('spaces/')) return;
+      const res = await fetch(`${calendarUrl()}/${eventId}?sendUpdates=none`, {
+        method: 'PATCH',
+        headers: await auth({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ start: { dateTime: m.startsAt.toISOString() }, end: { dateTime: m.endsAt.toISOString() } }),
+      });
+      if (!res.ok) throw new Error(`Google Calendar ${res.status}`);
+    },
+    async cancel(eventId) {
+      // الغرفة الملغاة تبقى بلا رابط في التطبيق، فلا يصل إليها أحد
+      if (eventId.startsWith('spaces/')) return;
+      const res = await fetch(`${calendarUrl()}/${eventId}?sendUpdates=none`, { method: 'DELETE', headers: await auth() });
+      if (!res.ok && res.status !== 410 && res.status !== 404) throw new Error(`Google Calendar ${res.status}`);
+    },
+  };
+}
+
+/** المزوّد الفعلي: حساب Google المربوط من الإدارة، ثم رمز البيئة، ثم الوهمي */
+export async function provider(tx?: Tx): Promise<MeetingProvider> {
+  const e = env();
+  const linked = await googleMeetLink(tx);
+  if (linked) return google(linked.refreshToken);
+  if (e.MEETING_PROVIDER === 'google' && e.GOOGLE_REFRESH_TOKEN) return google(e.GOOGLE_REFRESH_TOKEN);
+  return mock;
+}
+
+/** رابط تجريبي من لوحة الإدارة للتأكد من الربط */
+export async function testMeeting(tx: Tx): Promise<{ provider: string; joinUrl: string }> {
+  const p = await provider(tx);
+  const now = new Date();
+  const created = await p.create({ sessionId: `test-${now.getTime()}`, startsAt: now, endsAt: new Date(now.getTime() + 30 * 60_000), title: 'مآب — حصة تجريبية' });
+  return { provider: created.provider, joinUrl: created.joinUrl };
+}
 
 /** يطلب رابطاً لحصص مؤكدة (داخل معاملة الحدث)؛ العامل ينشئه لاحقاً */
 export async function requestMeetings(tx: Tx, sessionIds: string[]) {
@@ -109,7 +153,8 @@ export async function processPendingMeetings(tx: Tx, limit = 20): Promise<{ crea
     .for('update', { of: meetings, skipLocked: true });
   let created = 0;
   let failed = 0;
-  const p = provider();
+  if (!rows.length) return { created, failed };
+  const p = await provider(tx);
   for (const { m, s, teacher, student } of rows) {
     const input = { sessionId: s.id, startsAt: s.startsAt, endsAt: s.endsAt, title: `مآب — حصة ${student} مع ${teacher}` };
     try {
@@ -123,7 +168,7 @@ export async function processPendingMeetings(tx: Tx, limit = 20): Promise<{ crea
         await tx.update(meetings).set({ status: 'created', lastError: null }).where(eq(meetings.id, m.id));
       } else {
         const ev = await p.create(input);
-        await tx.update(meetings).set({ status: 'created', externalEventId: ev.eventId, joinUrl: ev.joinUrl, lastError: null }).where(eq(meetings.id, m.id));
+        await tx.update(meetings).set({ status: 'created', provider: ev.provider, externalEventId: ev.eventId, joinUrl: ev.joinUrl, lastError: null }).where(eq(meetings.id, m.id));
       }
       created++;
     } catch (e) {
