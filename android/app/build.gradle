@@ -38,7 +38,8 @@ android {
 
     defaultConfig {
         applicationId twa.applicationId
-        minSdk 21
+        // androidbrowserhelper 2.7 يتطلب أندرويد 7.0 فما بعد
+        minSdk 24
         targetSdk 36
         versionCode((findProperty('versionCode') ?: '1').toString().toInteger())
         versionName((findProperty('versionName') ?: '1.0.0').toString())
