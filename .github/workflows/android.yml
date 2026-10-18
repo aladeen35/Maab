@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       app_url:
-        description: 'رابط الموقع الحي، مثل https://maab-academy.vercel.app'
+        description: 'رابط الموقع الحي من Vercel ← Settings ← Domains، مثل https://maab-academy.vercel.app'
         required: true
 
 concurrency:
@@ -58,16 +58,20 @@ jobs:
         env:
           APP_URL: ${{ inputs.app_url }}
         run: |
-          # يُقبل الرابط بأي مسار أو شرطة ختامية، ويُستعمل أصله فقط
-          URL=$(echo "$APP_URL" | tr -d ' ' | sed -E 's#^(https://[^/]+).*#\1#')
-          case "$URL" in https://*.*) ;; *) echo "::error::الرابط يجب أن يبدأ بـ https:// مثل https://maab-academy.vercel.app"; exit 1;; esac
-          BODY=$(curl -sS -m 25 "$URL/api/v1/health" || true)
-          echo "$URL/api/v1/health → $BODY"
-          if ! echo "$BODY" | grep -q '"ok":true'; then
-            echo "::error::الموقع لا يستجيب على $URL — انسخي الرابط من Vercel ← Settings ← Domains وأعيدي التشغيل"
-            exit 1
-          fi
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          # يُقبل الرابط بأي مسار أو شرطة ختامية (يُستعمل أصله فقط)، أو عدة روابط
+          # مفصولة بمسافة أو فاصلة فيُختار أول رابط يستجيب
+          for RAW in $(echo "$APP_URL" | tr ',' ' '); do
+            URL=$(echo "$RAW" | sed -E 's#^(https://[^/]+).*#\1#')
+            case "$URL" in https://*.*) ;; *) echo "تخطّي $RAW: يجب أن يبدأ بـ https://"; continue;; esac
+            BODY=$(curl -sS -m 25 "$URL/api/v1/health" 2>&1 | head -c 300 || true)
+            echo "$URL/api/v1/health → $BODY"
+            if echo "$BODY" | grep -q '"ok":true'; then
+              echo "url=$URL" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::الموقع لا يستجيب على الرابط المُدخل — انسخي الرابط من Vercel ← Settings ← Domains وأعيدي التشغيل"
+          exit 1
 
       - name: مفتاح التوقيع
         id: key
