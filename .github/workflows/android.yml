@@ -53,6 +53,22 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - name: التحقق من رابط الموقع
+        id: site
+        env:
+          APP_URL: ${{ inputs.app_url }}
+        run: |
+          # يُقبل الرابط بأي مسار أو شرطة ختامية، ويُستعمل أصله فقط
+          URL=$(echo "$APP_URL" | tr -d ' ' | sed -E 's#^(https://[^/]+).*#\1#')
+          case "$URL" in https://*.*) ;; *) echo "::error::الرابط يجب أن يبدأ بـ https:// مثل https://maab-academy.vercel.app"; exit 1;; esac
+          BODY=$(curl -sS -m 25 "$URL/api/v1/health" || true)
+          echo "$URL/api/v1/health → $BODY"
+          if ! echo "$BODY" | grep -q '"ok":true'; then
+            echo "::error::الموقع لا يستجيب على $URL — انسخي الرابط من Vercel ← Settings ← Domains وأعيدي التشغيل"
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: مفتاح التوقيع
         id: key
         env:
@@ -81,7 +97,7 @@ jobs:
           MAAB_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           gradle -p android assembleRelease bundleRelease --no-daemon \
-            -PappUrl="${{ inputs.app_url }}" -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
+            -PappUrl="${{ steps.site.outputs.url }}" -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk dist/maab-1.0.${{ github.run_number }}.apk
           cp android/app/build/outputs/bundle/release/app-release.aab dist/maab-1.0.${{ github.run_number }}.aab
@@ -120,5 +136,5 @@ jobs:
             --title "تطبيق مآب للأندرويد 1.0.${{ github.run_number }}" \
             --notes "للتجربة: نزّلي ملف APK على جوال أندرويد وثبّتيه (اسمحي بالتثبيت من مصادر غير معروفة). ملف AAB لرفعه على Google Play.
 
-          الموقع: ${{ inputs.app_url }}
+          الموقع: ${{ steps.site.outputs.url }}
           بصمة التوقيع: $SHA"
