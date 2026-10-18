@@ -67,6 +67,10 @@ jobs:
             echo "$URL/api/v1/health → $BODY"
             if echo "$BODY" | grep -q '"ok":true'; then
               echo "url=$URL" >> "$GITHUB_OUTPUT"
+              # فحص سريع لطرق الدخول المفعّلة في الموقع
+              LOGIN=$(curl -sS -m 25 "$URL/login" || true)
+              if echo "$LOGIN" | grep -q 'id="email"'; then echo "✓ الدخول بالبريد مفعّل"; else echo "::warning::الدخول بالبريد غير مفعّل في الموقع: أضيفي GMAIL_USER وGMAIL_APP_PASSWORD في Vercel ثم Redeploy"; fi
+              echo "assetlinks: $(curl -sS -m 25 "$URL/.well-known/assetlinks.json" | head -c 400)"
               exit 0
             fi
           done
