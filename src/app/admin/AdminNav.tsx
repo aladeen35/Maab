@@ -1,6 +1,6 @@
 'use client';
 
-import { Award, LayoutDashboard, Receipt, ScrollText, Settings, UserCheck } from 'lucide-react';
+import { Award, LayoutDashboard, Receipt, ScrollText, Settings, TicketPercent, UserCheck, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
@@ -12,6 +12,8 @@ const ADMIN_NAV = [
   { href: '/admin/payments', label: 'التحويلات', icon: Receipt, badge: 'payments' as const },
   { href: '/admin/teachers', label: 'طلبات المعلمات', icon: UserCheck, badge: 'applications' as const },
   { href: '/admin/certificates', label: 'الشهادات', icon: Award },
+  { href: '/admin/coupons', label: 'الكوبونات', icon: TicketPercent },
+  { href: '/admin/staff', label: 'فريق الإدارة', icon: UsersRound },
   { href: '/admin#audit', label: 'سجل التدقيق', icon: ScrollText },
   { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
 ];

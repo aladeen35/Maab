@@ -75,7 +75,7 @@ describe.skipIf(!URL_FREE)('التشغيل المجاني', () => {
     for (const p of [
       'auth/otp/send', 'auth/otp/verify', 'me', 'teacher-applications', 'teacher-applications/[id]/status', 'files/[id]', 'files/[id]/content',
       'internal/tick', 'certificates', 'certificates/[id]/revoke', 'certificates/verify/[code]', 'push/key', 'push/subscriptions', 'admin/system',
-      'admin/payment-accounts', 'admin/payment-accounts/[id]', 'students',
+      'admin/payment-accounts', 'admin/payment-accounts/[id]', 'students', 'admin/coupons', 'admin/coupons/[id]', 'admin/staff', 'coupons/validate',
     ]) api[p] = await load(p);
   }, 180_000);
 
@@ -164,6 +164,74 @@ describe.skipIf(!URL_FREE)('التشغيل المجاني', () => {
     expect(put.status).toBe(200);
     const [row] = await db().select().from(t.paymentAccounts).where(eq(t.paymentAccounts.id, acc.id));
     expect(row).toMatchObject({ bankName: 'بنك الإنماء', instructionsAr: 'اكتبي الرقم المرجعي' });
+  });
+
+  it('كوبونات من اللوحة: MAAB20 وNANI90 يخصمان عند الشراء، والإيقاف يبطلها', async () => {
+    const [boss] = await db().select().from(t.users).where(eq(t.users.email, 'boss@example.com'));
+    const bossCookie = await cookieFor(boss.id);
+    const [salma] = await db().select().from(t.users).where(eq(t.users.phone, '+966512345678'));
+    const salmaCookie = await cookieFor(salma.id);
+    const create = (body: unknown) => call(api['admin/coupons'].POST, '/admin/coupons', { cookie: bossCookie, body });
+    const validate = (code: string) => call(api['coupons/validate'].POST, '/coupons/validate', { cookie: salmaCookie, body: { code, planCodes: ['regular'], subtotal: 200 } });
+
+    expect((await create({ code: 'maab20', percent: 20 })).status).toBe(200);
+    expect((await create({ code: 'NANI90', percent: 90, maxUses: 3 })).status).toBe(200);
+    expect((await create({ code: 'MAAB20', percent: 30 })).json.code).toBe('code_taken');
+    expect((await create({ code: 'خصم', percent: 10 })).json.code).toBe('code_invalid');
+    expect((await create({ code: 'OVER', percent: 120 })).status).toBe(422);
+    expect((await call(api['admin/coupons'].POST, '/admin/coupons', { cookie: salmaCookie, body: { code: 'MINE', percent: 50 } })).status).toBe(403);
+
+    expect((await validate('maab20')).json.data).toMatchObject({ code: 'MAAB20', discount: 40, total: 160 });
+    expect((await validate('Nani90')).json.data).toMatchObject({ discount: 180, total: 20 });
+
+    const list = await call(api['admin/coupons'].GET, '/admin/coupons', { cookie: bossCookie });
+    const nani = list.json.data.find((x: { code: string }) => x.code === 'NANI90');
+    expect(nani).toMatchObject({ percent: 90, maxUses: 3, used: 0, active: true });
+    const off = await call(api['admin/coupons/[id]'].PUT, `/admin/coupons/${nani.id}`, { method: 'PUT', cookie: bossCookie, params: { id: nani.id }, body: { code: 'NANI90', percent: 90, active: false } });
+    expect(off.status).toBe(200);
+    expect((await validate('NANI90')).json.code).toBe('coupon_invalid');
+    const [log] = await db().select().from(t.auditLogs).where(and(eq(t.auditLogs.action, 'coupon.update'), eq(t.auditLogs.entityId, nani.id)));
+    expect(log.after).toMatchObject({ active: false });
+  });
+
+  it('فريق الإدارة: بريد جديد يدخل بأدواره، والمدير لا يسحب دوره من نفسه ولا يبقى الفريق بلا مدير عام', async () => {
+    const [boss] = await db().select().from(t.users).where(eq(t.users.email, 'boss@example.com'));
+    const bossCookie = await cookieFor(boss.id);
+    const grant = (body: unknown, cookie = bossCookie) => call(api['admin/staff'].POST, '/admin/staff', { cookie, body });
+
+    const g = await grant({ email: 'Fin.Ance@gmail.com', roles: ['finance', 'support'] });
+    expect(g.status).toBe(200);
+    // يدخل بالبريد (ولو بنقاط مختلفة في Gmail) فيجد الأدوار
+    const login = await emailLogin('finance@gmail.com');
+    expect(login.json.data.next).toBe('/admin');
+    expect([...login.json.data.roles].sort()).toEqual(['finance', 'support']);
+
+    const finCookie = login.cookie!;
+    expect((await call(api['admin/staff'].GET, '/admin/staff', { cookie: finCookie })).status).toBe(403);
+    expect((await call(api['admin/coupons'].GET, '/admin/coupons', { cookie: finCookie })).status).toBe(200);
+
+    const list = await call(api['admin/staff'].GET, '/admin/staff', { cookie: bossCookie });
+    expect(list.json.data.find((x: { email: string }) => x.email === 'fin.ance@gmail.com').roles.sort()).toEqual(['finance', 'support']);
+
+    expect((await grant({ email: 'finance@gmail.com', roles: ['finance'] })).status).toBe(200);
+    expect((await grant({ email: 'boss@example.com', roles: ['supervisor'] })).json.code).toBe('self_demote');
+
+    // مدير عام ثانٍ يحاول سحب دور الأول: يُسمح ما دام يبقى مدير، ويُمنع إن كان الأخير
+    await grant({ email: 'deputy@example.com', roles: ['super_admin'] });
+    const [deputy] = await db().select().from(t.users).where(eq(t.users.email, 'deputy@example.com'));
+    const deputyCookie = await cookieFor(deputy.id);
+    const others = await db().select({ userId: t.userRoles.userId }).from(t.userRoles).where(eq(t.userRoles.role, 'super_admin'));
+    for (const o of others) {
+      if (o.userId === deputy.id) continue;
+      const [u] = await db().select().from(t.users).where(eq(t.users.id, o.userId));
+      if (u.email) expect((await grant({ email: u.email, roles: [] }, deputyCookie)).status).toBe(200);
+      else await db().delete(t.userRoles).where(and(eq(t.userRoles.userId, o.userId), eq(t.userRoles.role, 'super_admin')));
+    }
+    expect((await grant({ email: 'deputy@example.com', roles: [] }, deputyCookie)).json.code).toBe('self_demote');
+    await grant({ email: 'boss@example.com', roles: ['super_admin'] }, deputyCookie);
+    expect((await grant({ email: 'finance@gmail.com', roles: [] })).status).toBe(200);
+    const [log] = await db().select().from(t.auditLogs).where(eq(t.auditLogs.action, 'staff.roles')).orderBy(t.auditLogs.createdAt).limit(1);
+    expect(log.after).toMatchObject({ email: 'fin.ance@gmail.com' });
   });
 
   it('شهادة دورة من الإشراف: تصل للأسرة، وتُتحقق برمزها، وتُلغى بسبب', async () => {

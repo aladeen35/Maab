@@ -69,4 +69,11 @@ export function can(roles: readonly Role[], permission: Permission): boolean {
 
 /** أدوار الإدارة تستلزم مصادقة ثنائية وتنتهي جلستها بعد 30 دقيقة خمول (القسم 15) */
 export const STAFF_ROLES: Role[] = ['supervisor', 'finance', 'support', 'super_admin'];
+/** وصف مختصر لكل دور إداري يظهر عند منحه من لوحة الفريق */
+export const STAFF_ROLE_HELP: Record<string, string> = {
+  super_admin: 'كل الصلاحيات، ومنها الإعدادات وإدارة الفريق',
+  supervisor: 'الطلاب والمعلمات وقبولهن والتقارير والشهادات',
+  finance: 'اعتماد التحويلات والاسترداد والأسعار والكوبونات',
+  support: 'مساعدة الأسر وإعادة الجدولة والدخول بحساب مستخدم',
+};
 export const isStaff = (roles: readonly Role[]) => roles.some((r) => STAFF_ROLES.includes(r));

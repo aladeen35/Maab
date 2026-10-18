@@ -158,6 +158,18 @@ export const S = {
   }),
   pushUnsubscribe: z.object({ endpoint: z.url().max(1000) }),
   accountDelete: z.object({ confirm: z.literal('احذف حسابي') }),
+  coupon: z.object({
+    code: z.string().trim().min(3).max(30),
+    percent: z.coerce.number().int().min(1).max(100),
+    endsOn: isoDate.nullish(),
+    maxUses: z.coerce.number().int().min(1).max(100000).nullish(),
+    maxUsesPerUser: z.coerce.number().int().min(1).max(100).default(1),
+    active: z.boolean().default(true),
+  }),
+  staff: z.object({
+    email: z.email().max(200),
+    roles: z.array(z.enum(['super_admin', 'supervisor', 'finance', 'support'])).max(4),
+  }),
 };
 
 export type Endpoint = {
@@ -241,6 +253,11 @@ export const ENDPOINTS: Endpoint[] = [
   { method: 'DELETE', path: '/push/subscriptions', summary: 'إيقاف إشعارات هذا الجهاز', auth: 'user', body: S.pushUnsubscribe },
   { method: 'POST', path: '/push/test', summary: 'إشعار تجريبي لأجهزتي', auth: 'user' },
   { method: 'DELETE', path: '/me', summary: 'حذف الحساب نهائياً (شرط Google Play)', auth: 'user', body: S.accountDelete },
+  { method: 'GET', path: '/admin/coupons', summary: 'الكوبونات وعدد استخدامها', auth: 'user', can: ['prices.manage'] },
+  { method: 'POST', path: '/admin/coupons', summary: 'إضافة كوبون بنسبة خصم', auth: 'user', can: ['prices.manage'], body: S.coupon },
+  { method: 'PUT', path: '/admin/coupons/{id}', summary: 'تعديل كوبون أو إيقافه', auth: 'user', can: ['prices.manage'], body: S.coupon },
+  { method: 'GET', path: '/admin/staff', summary: 'فريق الإدارة وأدوارهم', auth: 'user', can: ['roles.manage'] },
+  { method: 'POST', path: '/admin/staff', summary: 'إضافة بريد للإدارة أو تعديل أدواره (قائمة فارغة تسحبها)', auth: 'user', can: ['roles.manage'], body: S.staff },
   { method: 'POST', path: '/internal/tick', summary: 'نبضة المهام كل دقيقة (pg_cron)', auth: 'public' },
 ];
 

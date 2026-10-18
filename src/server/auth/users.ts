@@ -6,7 +6,7 @@ import { currencyFor, defaultTimezone, type CountryCode } from '@/lib/domain/mar
 import { isStaff, type Role } from '@/lib/domain/permissions';
 import { asSystem, type Tx } from '../db/client';
 import { userRoles, users } from '../db/schema';
-import { isAdminEmail } from '../env';
+import { isAdminEmail, normalizeEmail } from '../env';
 import { audit } from '../services/audit';
 
 export type User = typeof users.$inferSelect;
@@ -23,13 +23,22 @@ export async function rolesOf(tx: Tx, userId: string): Promise<Role[]> {
 
 const alive = isNull(users.deletedAt);
 
+/** بالبريد كما هو، ثم بصيغته الموحّدة في Gmail (النقاط لا أثر لها) لمن أُضيف من لوحة الفريق */
+async function byEmail(tx: Tx, email: string): Promise<User | undefined> {
+  const [exact] = await tx.select().from(users).where(and(sql`lower(${users.email}) = lower(${email})`, alive));
+  const target = normalizeEmail(email);
+  if (exact || !target.endsWith('@gmail.com')) return exact;
+  const gmail = await tx.select().from(users).where(and(sql`(lower(${users.email}) like '%@gmail.com' or lower(${users.email}) like '%@googlemail.com')`, alive));
+  return gmail.find((u) => u.email && normalizeEmail(u.email) === target);
+}
+
 async function findExisting(tx: Tx, id: SignInIdentity): Promise<User | undefined> {
   if (id.kind === 'phone') return (await tx.select().from(users).where(and(eq(users.phone, id.phone), alive)))[0];
-  if (id.kind === 'email') return (await tx.select().from(users).where(and(sql`lower(${users.email}) = lower(${id.email})`, alive)))[0];
+  if (id.kind === 'email') return byEmail(tx, id.email);
   const [bySub] = await tx.select().from(users).where(and(eq(users.googleSub, id.sub), alive));
   if (bySub || !id.email) return bySub;
   // حساب أُنشئ بالبريد نفسه يُربط بحساب Google عند أول دخول به
-  return (await tx.select().from(users).where(and(sql`lower(${users.email}) = lower(${id.email})`, alive)))[0];
+  return byEmail(tx, id.email);
 }
 
 /** يجد المستخدم أو ينشئه؛ آمن مع الطلبات المتزامنة لأن القيود الفريدة تحسم السباق */

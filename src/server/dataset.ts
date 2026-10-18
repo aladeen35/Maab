@@ -631,6 +631,9 @@ const ACTIONS: Record<string, string> = {
   'integration.google.disconnect': 'فصلت حساب Google',
   'payment_account.update': 'عدّلت حساب استلام',
   'payment_account.create': 'أضافت حساب استلام',
+  'coupon.create': 'أنشأت كوبون خصم',
+  'coupon.update': 'عدّلت كوبون خصم',
+  'staff.roles': 'عدّلت أدوار عضو في الإدارة',
   export: 'صدّرت تقريراً',
 };
 
