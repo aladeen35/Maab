@@ -325,8 +325,18 @@ describe.skipIf(!URL_API)('واجهة /api/v1: المسار الكامل', () =>
   it('تقرير المعلمة يحتسب المحفوظ، ويخصم الرصيد، وإتمام جزء عمّ يرسل «الشرافة»', async () => {
     const [s] = await db().select().from(t.sessions).where(eq(t.sessions.studentId, childId)).orderBy(t.sessions.startsAt).limit(1);
     // الحصة الأولى تصير قبل ساعة، وكان يوسف قد حفظ جزء عمّ إلا أول النبأ
+    // أول وقت شاغر في الساعات الماضية (بيانات العرض فيها حصص للمعلمة نفسها اليوم)
+    for (let back = 60; ; back += 45) {
+      const moved = await c
+        .asSystem(null, (tx) => tx.update(t.sessions).set({ startsAt: new Date(Date.now() - back * 60_000), endsAt: new Date(Date.now() - (back - 30) * 60_000) }).where(eq(t.sessions.id, s.id)))
+        .then(() => true)
+        .catch((e: { cause?: { code?: string } }) => {
+          if (e.cause?.code !== '23P01' || back > 600) throw e;
+          return false;
+        });
+      if (moved) break;
+    }
     await c.asSystem(null, async (tx) => {
-      await tx.update(t.sessions).set({ startsAt: new Date(Date.now() - 60 * 60_000), endsAt: new Date(Date.now() - 30 * 60_000) }).where(eq(t.sessions.id, s.id));
       const { ayahIndex, juzInfo } = await import('@/lib/quran');
       await tx.insert(t.memorizedRanges).values({ studentId: childId, fromAyah: ayahIndex({ surah: 78, ayah: 17 }), toAyah: ayahIndex(juzInfo(30).to), source: 'placement', memorizedOn: '2026-01-01' });
     });

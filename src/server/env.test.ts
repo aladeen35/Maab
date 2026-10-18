@@ -21,3 +21,13 @@ describe('الإعدادات المستنتجة للتشغيل المجاني', 
     expect(resolveEnv({}).EMAIL_DRIVER).toBe('console');
   });
 });
+
+describe('مطابقة بريد المدير الأول', () => {
+  it('نقاط Gmail وحالة الأحرف والاقتباس لا تؤثر، و«+» يبقى فارقاً', async () => {
+    const { normalizeEmail } = await import('./env');
+    expect(normalizeEmail(' "Maab.Academy@Gmail.com" ')).toBe('maabacademy@gmail.com');
+    expect(normalizeEmail('maabacademy@googlemail.com')).toBe('maabacademy@gmail.com');
+    expect(normalizeEmail('maab.academy+parent@gmail.com')).toBe('maabacademy+parent@gmail.com');
+    expect(normalizeEmail('Info.Maab@Example.com')).toBe('info.maab@example.com');
+  });
+});

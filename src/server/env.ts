@@ -82,13 +82,27 @@ export function env(): Env {
   return cached;
 }
 
-/** قائمة بريد المديرين الأوائل بأحرف صغيرة */
+/**
+ * صيغة موحّدة للمقارنة: أحرف صغيرة بلا علامات اقتباس، ونقاط Gmail في الاسم
+ * لا أثر لها (maab.academy وmaabacademy صندوق واحد). جزء «+» يبقى فارقاً
+ * لأنه يميّز حسابات التجربة في الصندوق نفسه.
+ */
+export function normalizeEmail(email: string): string {
+  const clean = email.trim().toLowerCase().replace(/["'<>]/g, '');
+  const [local, domain] = clean.split('@');
+  if (!domain) return clean;
+  return domain === 'gmail.com' || domain === 'googlemail.com' ? `${local.replace(/\./g, '')}@gmail.com` : clean;
+}
+
+/** قائمة بريد المديرين الأوائل بصيغة المقارنة */
 export function adminEmails(): string[] {
   return (env().ADMIN_EMAILS ?? '')
-    .split(/[,\s]+/)
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+    .split(/[,;\s]+/)
+    .map(normalizeEmail)
+    .filter((e) => e.includes('@'));
 }
+
+export const isAdminEmail = (email: string | null | undefined) => Boolean(email) && adminEmails().includes(normalizeEmail(email!));
 
 /** بيانات العرض إن طُلبت صراحةً أو غابت قاعدة البيانات */
 export function usingDemoData(): boolean {

@@ -70,6 +70,8 @@ export async function requireViewer(section: Section): Promise<Viewer> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const viewer = await viewerFromToken(token);
   if (!viewer) redirect('/login');
+  // من يفتح لوحة الإدارة بلا دور إداري يرى السبب بدل تحويل صامت
+  if (section === 'admin' && !ALLOWED.admin(viewer)) redirect('/admin-denied');
   if (!viewer.roles.length) redirect('/onboarding');
   if (!ALLOWED[section](viewer)) redirect(homeFor(viewer.roles));
   return viewer;

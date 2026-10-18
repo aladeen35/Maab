@@ -6,7 +6,7 @@ import { currencyFor, defaultTimezone, type CountryCode } from '@/lib/domain/mar
 import { isStaff, type Role } from '@/lib/domain/permissions';
 import { asSystem, type Tx } from '../db/client';
 import { userRoles, users } from '../db/schema';
-import { adminEmails } from '../env';
+import { isAdminEmail } from '../env';
 import { audit } from '../services/audit';
 
 export type User = typeof users.$inferSelect;
@@ -69,7 +69,7 @@ export async function signInUser(id: SignInIdentity): Promise<{ user: User; role
  */
 async function bootstrapAdmin(tx: Tx, id: SignInIdentity, userId: string) {
   const proven = id.kind === 'email' ? id.email : id.kind === 'google' ? id.email : null;
-  if (!proven || !adminEmails().includes(proven.toLowerCase())) return;
+  if (!proven || !isAdminEmail(proven)) return;
   const granted = await tx.insert(userRoles).values({ userId, role: 'super_admin' }).onConflictDoNothing().returning({ role: userRoles.role });
   if (granted.length) {
     await audit(tx, null, { action: 'role.bootstrap', entity: 'user_roles', entityId: userId, after: { role: 'super_admin', email: proven } });
