@@ -12,11 +12,14 @@ const PAGES: Record<string, { title: string; points: string[] }> = {
   privacy: {
     title: 'سياسة الخصوصية',
     points: [
-      'نجمع الاسم والجوال والمدينة والبريد (اختياري) لولي الأمر، والاسم وتاريخ الميلاد والمستوى للطالب، لغرض التعليم فقط.',
+      'نجمع لولي الأمر أو الطالبة البالغة: الاسم والجوال أو البريد (أو حساب Google عند الدخول به) والدولة والمدينة والمنطقة الزمنية، وللطالب: الاسم والجنس وتاريخ الميلاد والمستوى والهدف، لغرض التعليم فقط.',
+      'ونحفظ ما تحتاجه الحلقات: المواعيد وروابط Google Meet والحضور وتقارير الحفظ والشهادات، وإيصالات التحويل لمراجعة الدفع.',
       'تسجيل القاصر يتطلب موافقة صريحة من ولي الأمر تُحفظ بالتاريخ والنسخة لكل سياسة.',
-      'تُجمع أقل قدر من البيانات، ويحق لكِ تنزيل بياناتك أو طلب حذف حسابك في أي وقت.',
-      'مستندات هوية المعلمات في تخزين خاص لا يراه إلا المشرفة والمدير العام، وتُحذف بيانات هوية المتقدّمات بعد 90 يومًا من رفض الطلب.',
+      'تُجمع أقل قدر من البيانات، ويحق لكِ طلب نسخة من بياناتك بمراسلتنا، وحذف حسابك وبيانات أبنائك بنفسك من «حذف الحساب» في أي وقت.',
+      'مستندات هوية المعلمات في تخزين خاص لا يراه إلا المشرفة والمدير العام، ويحق للمتقدّمة طلب حذفها بمراسلتنا.',
       'كل وصول إلى بيانات حسّاسة وكل إجراء إداري يُسجَّل في سجل تدقيق غير قابل للتعديل.',
+      'نستعين بخدمات: Supabase (قاعدة البيانات والتخزين)، وGoogle (تسجيل الدخول وGoogle Meet)، ومزوّد واتساب أو SMS أو البريد لرموز الدخول والإشعارات، وVercel وGitHub Pages للاستضافة. لا نبيع بياناتك ولا نشاركها للإعلانات.',
+      'نسخة العرض التجريبية لا ترسل بياناتك إلى خادم، وتفضيلات المظهر وموضع القراءة في المصحف تُحفظ في متصفحك فقط.',
     ],
   },
   terms: {
@@ -90,11 +93,14 @@ export default async function Legal({ params }: PageProps<'/legal/[slug]'>) {
               key={k}
               href={`/legal/${k}`}
               aria-current={k === slug ? 'page' : undefined}
-              className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold', k === slug ? 'border-brand bg-brand text-on-brand' : 'border-line text-muted hover:text-ink')}
+              className={cn('inline-flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold', k === slug ? 'border-brand bg-brand text-on-brand' : 'border-line text-muted hover:text-ink')}
             >
               {v.title}
             </Link>
           ))}
+          <Link href="/about" className="inline-flex min-h-11 items-center rounded-full border border-line px-3 text-xs font-semibold text-muted hover:text-ink">
+            عن المطور والمنظومة
+          </Link>
         </nav>
       </main>
     </PlainShell>

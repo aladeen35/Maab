@@ -1,6 +1,7 @@
 import {
   Bell,
   HandHeart,
+  Info,
   Headset,
   Receipt,
   ShieldCheck,
@@ -76,6 +77,7 @@ export default async function Account() {
         <ListRow href="/legal/privacy" icon={<ShieldCheck className="size-5" />} label="الخصوصية والموافقات" sub="كيف نحفظ بياناتك وبيانات أبنائك" />
         <ListRow href="/account/delete" icon={<Trash2 className="size-5" />} label="حذف الحساب" sub="يمحو بياناتك وبيانات أبنائك نهائياً" tone="danger" />
         <ListRow href="/legal/cancellation" icon={<Headset className="size-5" />} label="سياسات الحصص والدعم" />
+        <ListRow href="/about" icon={<Info className="size-5" />} label="عن المطور والمنظومة" sub="البشري للتكنولوجيا" />
         <LogoutRow />
       </Page>
     </>

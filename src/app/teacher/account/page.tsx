@@ -1,4 +1,4 @@
-import { CalendarDays, FileBadge, ShieldCheck, Star, UserRound, UsersRound } from 'lucide-react';
+import { CalendarDays, FileBadge, Info, ShieldCheck, Star, UserRound, UsersRound } from 'lucide-react';
 import type { Metadata } from 'next';
 import { MihrabFrame } from '@/components/brand/Brand';
 import { ThemeToggle } from '@/components/features/ThemeToggle';
@@ -69,6 +69,7 @@ export default async function TeacherAccount() {
           <ThemeToggle />
         </Card>
         <ListRow href="/legal/privacy" icon={<ShieldCheck className="size-5" />} label="الخصوصية وسياسة عدم التسجيل" />
+        <ListRow href="/about" icon={<Info className="size-5" />} label="عن المطور والمنظومة" sub="البشري للتكنولوجيا" />
         <LogoutRow />
       </Page>
     </>
