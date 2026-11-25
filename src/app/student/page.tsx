@@ -16,6 +16,7 @@ import { SEGMENT_LABEL } from '@/lib/labels';
 import { formatRange } from '@/lib/quran';
 import { JUZ_NAMES, juzOrdinal } from '@/lib/quran/names';
 import { pageOf } from '@/lib/quran/server';
+import { LegalLinks } from '@/components/shell/LegalLinks';
 import { LogoutButton } from './LogoutButton';
 
 export const metadata: Metadata = { title: 'صفحتي' };
@@ -114,6 +115,7 @@ export default async function StudentHome() {
           اطلب من ولي أمرك رمزاً جديداً إن نسيت رمزك
         </p>
         <CertificateList items={d.certificatesOf(me.id)} />
+        <LegalLinks />
       </main>
     </PlainShell>
   );

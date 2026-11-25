@@ -1,6 +1,7 @@
 import { BadgeCheck, ClipboardCheck, Globe2, Video } from 'lucide-react';
 import Link from 'next/link';
 import { LogoFull } from '@/components/brand/Brand';
+import { LegalLinks } from '@/components/shell/LegalLinks';
 import { NubianBand } from '@/components/sudan/Nubian';
 import { ButtonLink } from '@/components/ui/Button';
 import { IS_LIVE } from '@/lib/api';
@@ -71,6 +72,7 @@ export default function Welcome() {
               </div>
             </nav>
           )}
+          <LegalLinks tone="hero" className="mt-4" />
         </section>
       </div>
     </div>
