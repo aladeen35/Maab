@@ -34,12 +34,12 @@ export default function About() {
         <Card className="p-5 text-center">
           <Image
             src={asset('/brand/albushra.webp')}
-            alt="شعار البشري للتكنولوجيا"
+            alt="شعار البشرى للتكنولوجيا"
             width={96}
             height={96}
             className="mx-auto size-24 rounded-full bg-brand-deep p-2 ring-2 ring-gold/60"
           />
-          <h1 className="mt-3 font-display text-2xl font-bold text-brand">البشري للتكنولوجيا</h1>
+          <h1 className="mt-3 font-display text-2xl font-bold text-brand">البشرى للتكنولوجيا</h1>
           <p className="text-sm text-muted" dir="ltr">
             Albushra Technology
           </p>
@@ -68,7 +68,7 @@ export default function About() {
               </p>
             </div>
           </Card>
-          <p className="text-center text-xs text-muted">جزء من منظومة البشري للتكنولوجيا</p>
+          <p className="text-center text-xs text-muted">جزء من منظومة البشرى للتكنولوجيا</p>
         </section>
 
         <section className="space-y-3">
@@ -93,7 +93,7 @@ export default function About() {
         </section>
 
         <section className="space-y-3">
-          <SectionTitle>مؤشرات منظومة البشري</SectionTitle>
+          <SectionTitle>مؤشرات منظومة البشرى</SectionTitle>
           <div className="grid grid-cols-2 gap-2">
             {stats.map((s) => (
               <Card key={s.label} className="p-3 text-center">
@@ -121,7 +121,7 @@ export default function About() {
         </section>
 
         <p className="text-center text-xs text-muted">
-          © 2026 البشري للتكنولوجيا ·{' '}
+          © 2026 البشرى للتكنولوجيا ·{' '}
           <a href={SITE} className="font-semibold text-brand underline" dir="ltr">
             albushra.app
           </a>

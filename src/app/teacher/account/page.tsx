@@ -69,7 +69,7 @@ export default async function TeacherAccount() {
           <ThemeToggle />
         </Card>
         <ListRow href="/legal/privacy" icon={<ShieldCheck className="size-5" />} label="الخصوصية وسياسة عدم التسجيل" />
-        <ListRow href="/about" icon={<Info className="size-5" />} label="عن المطور والمنظومة" sub="البشري للتكنولوجيا" />
+        <ListRow href="/about" icon={<Info className="size-5" />} label="عن المطور والمنظومة" sub="البشرى للتكنولوجيا" />
         <LogoutRow />
       </Page>
     </>
